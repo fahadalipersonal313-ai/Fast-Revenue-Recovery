@@ -319,6 +319,17 @@ img { max-width: 100%; display: block; }
   border-radius: var(--radius-xl); box-shadow: var(--shadow-lg);
   aspect-ratio: 4/5; object-fit: cover;
 }
+.founder-photo-empty {
+  aspect-ratio: 4/5; border-radius: var(--radius-xl);
+  background: linear-gradient(135deg, var(--orange-100), var(--orange-200));
+  border: 2px dashed var(--orange-300); display: grid; place-items: center;
+  color: var(--orange-700); font-size: .9rem; font-weight: 600; text-align: center; padding: 24px;
+}
+.founder-photo-empty::before {
+  content: "Drop founder.jpg here";
+  display: block;
+}
+
 .founder-sign {
   margin-top: 1.6rem; font-style: italic; color: var(--orange-700); font-weight: 600;
 }
