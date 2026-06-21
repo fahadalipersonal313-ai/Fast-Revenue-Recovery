@@ -1,0 +1,36 @@
+# Environment / secrets — never commit, real values live in Streamlit Cloud's
+# secrets UI in production (read via st.secrets / os.environ).
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+
+# Local database and generated exports — includes per-tenant DBs (user
+# accounts + each client's invoices/quotes/leads/encrypted email creds).
+# Catch every SQLite variant anywhere in the tree to be defensive.
+data/
+exports/
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Backups, logs, temp files
+*.bak
+*.swp
+*.swo
+*.log
+*.tmp
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
