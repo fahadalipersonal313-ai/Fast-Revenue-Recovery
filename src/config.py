@@ -159,15 +159,18 @@ class Settings:
         """AI is usable only when enabled *and* a key is present."""
         return bool(self.ai_enabled and self.ai_api_key)
 
-    # Email credentials: per-tenant override (encrypted DB row) takes priority
-    # over the env vars, which remain as the local single-user fallback.
+    # Email credentials: ALWAYS per-tenant, never fall back to env vars. The
+    # env-var fallback was a legacy single-user convenience, but in multi-tenant
+    # SaaS mode it leaks the operator's personal Gmail into every signup's
+    # Settings UI, which is both confusing ("why is this someone else's email?")
+    # and a privacy footgun. Local dev: sign up a tenant once, save creds in UI.
     @property
     def email_address(self) -> Optional[str]:
-        return self.email_address_override or os.environ.get("EMAIL_ADDRESS")
+        return self.email_address_override or None
 
     @property
     def email_app_password(self) -> Optional[str]:
-        return self.email_app_password_override or os.environ.get("EMAIL_APP_PASSWORD")
+        return self.email_app_password_override or None
 
     @property
     def email_imap_host(self) -> str:

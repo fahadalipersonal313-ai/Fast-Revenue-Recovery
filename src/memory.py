@@ -159,6 +159,34 @@ class AgentMemory:
         payload: Dict[str, Any],
         outcome: str = "open",
     ) -> None:
+        ref = str(reference or "")
+        # Defensive dedupe for files without proper reference numbers: if no
+        # reference, match an existing record by (customer + amount + due_date)
+        # and update it instead of inserting a near-duplicate. Prevents the
+        # "uploaded twice = balance doubled" symptom on messy spreadsheets.
+        if not ref.strip():
+            due = str(payload.get("due_date") or payload.get("Due Date") or "")
+            existing = db.query(
+                "SELECT id, payload_json FROM records WHERE record_type=? "
+                "AND customer_name=? AND amount=? AND reference='' LIMIT 5",
+                (record_type, customer_name, float(amount or 0)),
+                path=self.path,
+            )
+            for row in existing:
+                try:
+                    p = json.loads(row["payload_json"] or "{}")
+                except (json.JSONDecodeError, TypeError):
+                    p = {}
+                existing_due = str(p.get("due_date") or p.get("Due Date") or "")
+                if existing_due == due:
+                    db.execute(
+                        "UPDATE records SET amount=?, status=?, payload_json=?, "
+                        "outcome=? WHERE id=?",
+                        (float(amount or 0), status,
+                         json.dumps(payload, default=str), outcome, row["id"]),
+                        path=self.path,
+                    )
+                    return
         db.execute(
             "INSERT INTO records"
             "(record_type, reference, customer_name, amount, status, payload_json, outcome) "
@@ -168,7 +196,7 @@ class AgentMemory:
             "  payload_json = excluded.payload_json, outcome = excluded.outcome",
             (
                 record_type,
-                str(reference or ""),
+                ref,
                 customer_name,
                 float(amount or 0),
                 status,
@@ -244,6 +272,17 @@ class AgentMemory:
             path=self.path,
         )
         return bool(row and row["n"] > 0)
+
+    def clear_recommendations(self, record_type: Optional[str] = None) -> None:
+        """Wipe stored recommendations so a re-analyze doesn't accumulate
+        duplicates row-by-row. Per-type if given, otherwise all of them."""
+        if record_type:
+            db.execute(
+                "DELETE FROM recommendations WHERE record_type=?",
+                (record_type,), path=self.path,
+            )
+        else:
+            db.execute("DELETE FROM recommendations", path=self.path)
 
     def record_recommendation(
         self,

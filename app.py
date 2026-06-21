@@ -301,12 +301,18 @@ def page_welcome() -> None:
     )
 
     c1, c2, c3 = st.columns(3)
-    if c1.button("Try sample data", use_container_width=True, key="welc_try_sample"):
-        _goto("📤 Upload")
-    if c2.button("Open Upload", use_container_width=True, key="welc_open_upload"):
-        _goto("📤 Upload")
-    if c3.button("Open Invoices", use_container_width=True, key="welc_open_inv"):
-        _goto("🧾 Invoices")
+    with c1:
+        if ui.link_button("Generate an invoice", "🧾 Invoices",
+                          key="welc_gen", use_container_width=True):
+            _goto("🧾 Invoices")
+    with c2:
+        if ui.link_button("Upload a file", "📤 Upload",
+                          key="welc_upl", use_container_width=True):
+            _goto("📤 Upload")
+    with c3:
+        if ui.link_button("See the daily plan", "🗂️ Daily Plan",
+                          key="welc_plan", use_container_width=True):
+            _goto("🗂️ Daily Plan")
 
     # --- Section 2: Connect your email --------------------------------------
     st.markdown("<div class='rrd-wsec'><div class='rrd-wsec-num'>2</div>"

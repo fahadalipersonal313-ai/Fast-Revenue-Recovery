@@ -169,12 +169,70 @@ input, textarea, [data-baseweb="select"] input { border:none !important; box-sha
 /* ---------------- Alerts (softer) ---------------- */
 [data-testid="stAlert"] { border-radius:12px; border:1px solid #e7e9ef; }
 
+/* ================= Premium polish — applies everywhere ================= */
+/* Entrance fade-up for top-level content blocks */
+@keyframes rrd-in { from { opacity:0; transform:translateY(8px); }
+                   to   { opacity:1; transform:translateY(0); } }
+[data-testid="stMain"] [data-testid="stVerticalBlock"] > [data-testid="stMarkdownContainer"],
+[data-testid="stMain"] [data-testid="stMetric"],
+[data-testid="stMain"] [data-testid="stDataFrame"],
+[data-testid="stMain"] [data-testid="stExpander"],
+[data-testid="stMain"] [data-testid="stTabs"],
+[data-testid="stMain"] [data-testid="stAlert"] {
+  animation: rrd-in .35s ease both; }
+
+/* Premium tabs: pill-style active state with gradient underline */
+.stTabs [data-baseweb="tab-list"] { gap:6px; border-bottom:1px solid #e7e9ef; padding-bottom:0; }
+.stTabs [data-baseweb="tab"] {
+  border-radius:10px 10px 0 0 !important; padding:.55rem 1.05rem !important;
+  font-weight:600; color:#64748b; transition:color .15s ease, background .15s ease; }
+.stTabs [data-baseweb="tab"]:hover { color:#0f172a; background:rgba(79,70,229,.04); }
+.stTabs [aria-selected="true"] {
+  color:#4f46e5 !important; background:linear-gradient(180deg, rgba(79,70,229,.08), rgba(79,70,229,0));
+}
+.stTabs [data-baseweb="tab-highlight"] {
+  background:linear-gradient(90deg,#4f46e5,#7c3aed) !important; height:3px !important;
+  border-radius:3px 3px 0 0; }
+
+/* KPI cards: hover-lift depth */
+[data-testid="stMain"] [data-testid="stMetric"] {
+  transition:transform .2s ease, box-shadow .2s ease; }
+[data-testid="stMain"] [data-testid="stMetric"]:hover {
+  transform:translateY(-2px);
+  box-shadow:0 14px 24px -10px rgba(15,23,42,.14), 0 4px 8px rgba(16,24,40,.04); }
+
+/* DataFrames / tables: rounded edges, subtle hairline */
+[data-testid="stDataFrame"], [data-testid="stDataEditor"] {
+  border-radius:12px !important; overflow:hidden;
+  box-shadow:0 1px 3px rgba(16,24,40,.05); }
+
+/* Expanders: lift on hover */
+[data-testid="stExpander"] details { transition:box-shadow .2s ease; }
+[data-testid="stExpander"] details:hover { box-shadow:0 8px 18px -10px rgba(15,23,42,.18); }
+
+/* Inline "go to page" link buttons rendered via st.button — distinguished
+   from primary CTA buttons by the .rrd-link-wrap parent. */
+.rrd-link-wrap .stButton>button {
+  background:linear-gradient(180deg, #eef2ff 0%, #e0e7ff 100%) !important;
+  border:1px solid #c7d2fe !important; color:#4338ca !important;
+  font-weight:700 !important; box-shadow:0 1px 2px rgba(79,70,229,.10) !important; }
+.rrd-link-wrap .stButton>button:hover {
+  background:linear-gradient(180deg, #e0e7ff 0%, #c7d2fe 100%) !important;
+  border-color:#a5b4fc !important; transform:translateY(-1px); }
+
 /* ================= Custom components ================= */
-.rrd-head { margin:0 0 .2rem; }
-.rrd-head h1 { font-size:1.7rem; margin:0; display:flex; align-items:center; gap:.55rem; line-height:1.2; }
-.rrd-head .ic { font-size:1.45rem; }
-.rrd-head p { color:#64748b; margin:.4rem 0 0; font-size:.96rem; max-width:760px; }
-.rrd-rule { height:1px; background:#e7e9ef; border:0; margin:1.1rem 0 1.5rem; }
+.rrd-head { margin:0 0 .2rem; position:relative; padding-left:18px; }
+.rrd-head::before {
+  content:""; position:absolute; left:0; top:5px; bottom:30px; width:4px; border-radius:4px;
+  background:linear-gradient(180deg,#4f46e5,#ec4899); }
+.rrd-head h1 { font-size:1.85rem; margin:0; display:flex; align-items:center; gap:.55rem; line-height:1.15;
+  letter-spacing:-.022em;
+  background:linear-gradient(135deg,#0f172a 30%, #4f46e5 130%);
+  -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
+.rrd-head .ic { font-size:1.55rem; -webkit-text-fill-color:initial; }
+.rrd-head p { color:#64748b; margin:.5rem 0 0; font-size:.97rem; max-width:760px; line-height:1.55; }
+.rrd-rule { height:1px; background:linear-gradient(90deg,#e7e9ef,transparent);
+  border:0; margin:1.1rem 0 1.5rem; }
 
 .rrd-sec { font-size:.74rem; font-weight:700; letter-spacing:.07em; text-transform:uppercase;
   color:#94a3b8; margin:1.6rem 0 .7rem; }
@@ -214,6 +272,26 @@ input, textarea, [data-baseweb="select"] input { border:none !important; box-sha
         """,
         unsafe_allow_html=True,
     )
+
+
+def link_button(label: str, page_label: str, *, key: str,
+                use_container_width: bool = False) -> bool:
+    """Premium inline "go to page" button — distinct visual treatment from
+    primary CTAs (soft lavender gradient, indigo text). Caller is responsible
+    for handling the click → ``_goto(page_label)`` since that lives in app.py
+    and we don't want a UI module importing from app. Returns ``True`` when
+    clicked.
+
+    Usage in a page::
+
+        if ui.link_button("Open Invoices", "🧾 Invoices", key="...") :
+            _goto("🧾 Invoices")
+    """
+    st.markdown("<div class='rrd-link-wrap'>", unsafe_allow_html=True)
+    clicked = st.button(f"➜  {label}", key=key,
+                        use_container_width=use_container_width)
+    st.markdown("</div>", unsafe_allow_html=True)
+    return clicked
 
 
 def welcome_styles() -> None:

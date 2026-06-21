@@ -296,6 +296,14 @@ def analyze_and_queue(
     decisions: List[AnyDecision] = []
     plan_meta: List[tuple[AnyDecision, str, str, str]] = []
 
+    # Clear stored recommendations for every type we're about to re-analyze, so
+    # a second upload of the same file doesn't visually double the agent's
+    # suggestions in the Recommendations tab. Records themselves are deduped
+    # by the records table's UNIQUE constraint via save_record's ON CONFLICT.
+    for record_type in records_by_type:
+        if record_type in _AGENTS:
+            memory.clear_recommendations(record_type)
+
     for record_type, rows in records_by_type.items():
         if record_type not in _AGENTS:
             continue
