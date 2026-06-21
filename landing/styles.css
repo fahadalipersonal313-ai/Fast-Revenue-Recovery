@@ -218,7 +218,40 @@ img { max-width: 100%; display: block; }
 .section-head { text-align: center; max-width: 740px; margin: 0 auto 60px; }
 .section-sub { color: var(--body); font-size: 1.05rem; margin-top: 1rem; }
 
-/* ============ FEATURES ============ */
+/* ============ HERO (centered variant, no photo) ============ */
+.hero-centered { padding: 100px 0 110px; }
+.hero-centered .hero-text { max-width: 820px; }
+.hero-centered h1 { font-size: clamp(2.6rem, 6vw, 4.4rem); }
+.hero-centered .lead { font-size: 1.22rem; max-width: 640px; }
+
+/* ============ FEATURES — text-only cards with gradient header ============ */
+.feature-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+  gap: 26px;
+}
+.feature-card {
+  background: var(--white); border: 1px solid var(--line-2); border-radius: var(--radius-lg);
+  overflow: hidden; box-shadow: var(--shadow-md);
+  transition: transform .3s cubic-bezier(.22,1,.36,1), box-shadow .3s ease;
+  display: flex; flex-direction: column;
+}
+.feature-card:hover { transform: translateY(-6px); box-shadow: var(--shadow-lg); }
+.feature-illust {
+  height: 130px; display: grid; place-items: center; position: relative; overflow: hidden;
+}
+.feature-illust::after {
+  content: ""; position: absolute; inset: 0;
+  background: radial-gradient(circle at 30% 30%, rgba(255,255,255,.35) 0%, transparent 60%);
+}
+.feature-illust-1 { background: linear-gradient(135deg, var(--orange-500) 0%, var(--orange-700) 100%); }
+.feature-illust-2 { background: linear-gradient(135deg, var(--amber-500) 0%, var(--orange-500) 100%); }
+.feature-illust-3 { background: linear-gradient(135deg, var(--orange-600) 0%, var(--rose-400) 100%); }
+.illust-glyph { font-size: 3.2rem; position: relative; z-index: 1; filter: drop-shadow(0 4px 8px rgba(0,0,0,.18)); }
+.feature-card .feature-num { padding: 18px 24px 0; margin-bottom: 0; }
+.feature-card h3 { padding: 0 24px; font-size: 1.3rem; line-height: 1.25; margin: 8px 0 10px; }
+.feature-card p { padding: 0 24px; font-size: .96rem; color: var(--body); margin-bottom: 1.2rem; flex-grow: 1; }
+.feature-card .btn-soft { margin: 0 24px 24px; align-self: flex-start; }
+
 .features { padding: 100px 0; }
 .feature-row {
   display: grid; grid-template-columns: 1fr 1fr; gap: 70px; align-items: center;
@@ -289,6 +322,25 @@ img { max-width: 100%; display: block; }
 .founder-sign {
   margin-top: 1.6rem; font-style: italic; color: var(--orange-700); font-weight: 600;
 }
+
+/* ============ WHY US ============ */
+.whyus { padding: 100px 0; }
+.whyus-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 24px;
+}
+.why-card {
+  background: var(--white); border: 1px solid var(--line-2); border-radius: var(--radius-lg);
+  padding: 32px 28px; box-shadow: var(--shadow-md);
+  transition: transform .25s ease, box-shadow .25s ease;
+}
+.why-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-lg); }
+.why-ic {
+  font-size: 1.9rem; width: 56px; height: 56px; border-radius: 16px; display: grid; place-items: center;
+  background: linear-gradient(135deg, var(--orange-50), var(--orange-100));
+  border: 1px solid var(--orange-200); margin-bottom: 1.1rem;
+}
+.why-card h4 { font-size: 1.15rem; font-weight: 800; margin-bottom: .55rem; line-height: 1.2; }
+.why-card p { font-size: .95rem; color: var(--body); margin: 0; line-height: 1.55; }
 
 /* ============ PRICING ============ */
 .pricing { padding: 100px 0; background: var(--cream); }

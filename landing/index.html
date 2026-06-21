@@ -30,36 +30,25 @@
 </header>
 
 <!-- ============ HERO ============ -->
-<section class="hero">
+<section class="hero hero-centered">
   <div class="hero-bg-blob hero-blob-1"></div>
   <div class="hero-bg-blob hero-blob-2"></div>
-  <div class="container hero-grid">
-    <div class="hero-text reveal">
-      <div class="eyebrow">For small businesses · No accounting software needed</div>
-      <h1>Get paid faster,<br/>without the<br/><span class="grad-text">awkward chasing.</span></h1>
-      <p class="lead">
-        Revenue Recovery Desk reads your unpaid invoices, open quotes and cold
-        leads — then drafts polite, professional follow-ups for you to approve
-        and send. <strong>You stay in control of every message.</strong>
-      </p>
-      <div class="hero-cta">
-        <a href="https://fast-revenue-recovery.streamlit.app" class="btn btn-primary btn-lg">Start free →</a>
-        <a href="#how" class="btn btn-ghost btn-lg">See how it works</a>
-      </div>
-      <div class="hero-meta">
-        <span>✓ Free to start</span>
-        <span>✓ Works with any spreadsheet</span>
-        <span>✓ No credit card</span>
-      </div>
+  <div class="container hero-text reveal" style="text-align:center; margin: 0 auto;">
+    <div class="eyebrow">For small businesses · No accounting software needed</div>
+    <h1>Get paid faster,<br/>without the <span class="grad-text">awkward chasing.</span></h1>
+    <p class="lead" style="margin-left:auto; margin-right:auto;">
+      Revenue Recovery Desk reads your unpaid invoices, open quotes and cold
+      leads — then drafts polite, professional follow-ups for you to approve
+      and send. <strong>You stay in control of every message.</strong>
+    </p>
+    <div class="hero-cta" style="justify-content:center;">
+      <a href="https://fast-revenue-recovery.streamlit.app" class="btn btn-primary btn-lg">Start free →</a>
+      <a href="#how" class="btn btn-ghost btn-lg">See how it works</a>
     </div>
-    <div class="hero-photo reveal">
-      <div class="photo-frame">
-        <img src="assets/01-hero-portrait.png" alt="Founder" loading="eager" />
-      </div>
-      <div class="photo-badge">
-        <strong>£0</strong>
-        <span>to start</span>
-      </div>
+    <div class="hero-meta" style="justify-content:center;">
+      <span>✓ Free to start</span>
+      <span>✓ Works with any spreadsheet</span>
+      <span>✓ No credit card</span>
     </div>
   </div>
 </section>
@@ -77,7 +66,7 @@
   </div>
 </section>
 
-<!-- ============ FEATURES ============ -->
+<!-- ============ FEATURES (text + gradient illustration cards) ============ -->
 <section id="features" class="features">
   <div class="container">
     <div class="section-head reveal">
@@ -85,8 +74,11 @@
       <h2>Three pipelines.<br/>One simple flow.</h2>
     </div>
 
-    <div class="feature-row reveal">
-      <div class="feature-text">
+    <div class="feature-grid">
+      <div class="feature-card reveal">
+        <div class="feature-illust feature-illust-1">
+          <div class="illust-glyph">🧮</div>
+        </div>
         <div class="feature-num">01</div>
         <h3>Generate invoices in 30 seconds</h3>
         <p>Build clean PDF invoices — single or bulk from a spreadsheet.
@@ -94,13 +86,11 @@
            second invoice for the same client is a one-click reuse.</p>
         <a href="https://fast-revenue-recovery.streamlit.app" class="btn btn-soft">Try it free →</a>
       </div>
-      <div class="feature-img">
-        <img src="assets/02-desk-laptop.png" alt="Founder at desk generating an invoice" loading="lazy" />
-      </div>
-    </div>
 
-    <div class="feature-row feature-row-reverse reveal">
-      <div class="feature-text">
+      <div class="feature-card reveal">
+        <div class="feature-illust feature-illust-2">
+          <div class="illust-glyph">📤</div>
+        </div>
         <div class="feature-num">02</div>
         <h3>Import any spreadsheet</h3>
         <p>Drop in an Excel or CSV of invoices, quotes or leads — even messy
@@ -108,23 +98,17 @@
            the first time, so every future upload is one click.</p>
         <a href="https://fast-revenue-recovery.streamlit.app" class="btn btn-soft">Try it free →</a>
       </div>
-      <div class="feature-img">
-        <img src="assets/03-presenting.png" alt="Explaining how data import works" loading="lazy" />
-      </div>
-    </div>
 
-    <div class="feature-row reveal">
-      <div class="feature-text">
+      <div class="feature-card reveal">
+        <div class="feature-illust feature-illust-3">
+          <div class="illust-glyph">🤖</div>
+        </div>
         <div class="feature-num">03</div>
-        <h3>AI ranks who needs chasing — you approve</h3>
+        <h3>AI ranks who needs chasing</h3>
         <p>The agent reviews every record, scores urgency, drafts a polite
-           follow-up message in your tone, and queues it for your approval.
-           Hit <em>Approve</em>, copy, send from your own inbox. Nothing
-           leaves your control.</p>
+           follow-up in your tone, and queues it for approval. Hit
+           <em>Approve</em>, copy, send from your inbox. Nothing leaves your control.</p>
         <a href="https://fast-revenue-recovery.streamlit.app" class="btn btn-soft">Try it free →</a>
-      </div>
-      <div class="feature-img">
-        <img src="assets/04-phone-call.png" alt="Founder on a customer call" loading="lazy" />
       </div>
     </div>
   </div>
@@ -167,51 +151,34 @@
   </div>
 </section>
 
-<!-- ============ TEAMS / SOCIAL PROOF ============ -->
-<section class="teams">
+<!-- ============ WHY US (text-only differentiator section) ============ -->
+<section class="whyus">
   <div class="container">
     <div class="section-head reveal">
-      <div class="eyebrow eyebrow-center">Built for teams like yours</div>
-      <h2>Solo founders. Small ops teams.<br/>Anyone with overdue invoices.</h2>
+      <div class="eyebrow eyebrow-center">Why us, not Chaser</div>
+      <h2>Built for the 90% of businesses<br/>the £199/month tools ignore.</h2>
     </div>
-    <div class="teams-grid">
-      <div class="team-card reveal">
-        <img src="assets/05-team-of-three.png" alt="Small team reviewing data" loading="lazy" />
-        <div class="team-cap">"We replaced a £200/month tool and got a more focused workflow."<br/><span>— Early access user, consultancy</span></div>
+    <div class="whyus-grid">
+      <div class="why-card reveal">
+        <div class="why-ic">💷</div>
+        <h4>Honestly affordable</h4>
+        <p>Chaser starts at £199/month. We start at zero. Even our paid tier (later) will be a fraction of theirs — built for sole traders and micro-shops, not enterprise.</p>
       </div>
-      <div class="team-card reveal">
-        <img src="assets/06-team-of-four.png" alt="Growing team meeting" loading="lazy" />
-        <div class="team-cap">"Finally something built for businesses without Xero."<br/><span>— Early access user, design studio</span></div>
+      <div class="why-card reveal">
+        <div class="why-ic">📋</div>
+        <h4>No accounting software needed</h4>
+        <p>Other tools demand Xero or QuickBooks. We work straight from a spreadsheet you already have. Zero setup tax.</p>
       </div>
-      <div class="team-card reveal">
-        <img src="assets/08-team-celebration.png" alt="Team celebrating a recovered invoice" loading="lazy" />
-        <div class="team-cap">"Recovered three overdue invoices in the first week."<br/><span>— Early access user, freelance accountant</span></div>
+      <div class="why-card reveal">
+        <div class="why-ic">✋</div>
+        <h4>You approve every message</h4>
+        <p>Most tools auto-send. We draft — you decide. Every customer interaction stays personal and on-brand because <em>you</em> sent it.</p>
       </div>
-    </div>
-  </div>
-</section>
-
-<!-- ============ ABOUT FOUNDER ============ -->
-<section class="founder">
-  <div class="container founder-grid">
-    <div class="founder-photo reveal">
-      <img src="assets/10-environmental-portrait.png" alt="Founder portrait" loading="lazy" />
-    </div>
-    <div class="founder-text reveal">
-      <div class="eyebrow">Why this exists</div>
-      <h2>I built this because every<br/>small business I know was<br/>losing money to silence.</h2>
-      <p>
-        Invoices go unpaid not because customers won't pay — but because
-        following up feels awkward, takes time, and falls to the bottom of
-        a busy week. Existing tools cost £200/month and expect you to already
-        have accounting software set up.
-      </p>
-      <p>
-        Revenue Recovery Desk is for the rest of us: solo founders,
-        freelancers, micro-agencies, tradespeople. People who track invoices
-        in a spreadsheet and shouldn't need to learn Xero to get paid on time.
-      </p>
-      <p class="founder-sign">— Fahad Ali, founder</p>
+      <div class="why-card reveal">
+        <div class="why-ic">🎯</div>
+        <h4>Quotes & leads, not just invoices</h4>
+        <p>Most chasing tools cover invoices only. We track open quotes and cold leads too — the full revenue pipeline, not just the unpaid tail.</p>
+      </div>
     </div>
   </div>
 </section>
@@ -313,8 +280,6 @@
 
 <!-- ============ SCROLL REVEAL ============ -->
 <script>
-  // IntersectionObserver: add .visible class when an element scrolls into view
-  // → triggers the CSS transition for fade-up reveal. No deps.
   const io = new IntersectionObserver((entries) => {
     entries.forEach(e => {
       if (e.isIntersecting) {
