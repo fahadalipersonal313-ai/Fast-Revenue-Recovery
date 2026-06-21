@@ -363,11 +363,57 @@ img { max-width: 100%; display: block; }
 
 /* ============ PRICING ============ */
 .pricing { padding: 100px 0; background: var(--cream); }
+.price-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 26px; max-width: 920px; margin: 0 auto; align-items: stretch;
+}
 .price-card {
-  max-width: 480px; margin: 0 auto;
-  background: var(--white); border-radius: var(--radius-xl); padding: 44px 40px;
-  box-shadow: var(--shadow-lg); border: 1px solid var(--line-2);
+  background: var(--white); border-radius: var(--radius-xl); padding: 42px 36px;
+  box-shadow: var(--shadow-md); border: 1px solid var(--line-2);
   text-align: center; position: relative; overflow: hidden;
+  display: flex; flex-direction: column;
+  transition: transform .3s cubic-bezier(.22,1,.36,1), box-shadow .3s ease;
+}
+.price-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-lg); }
+
+.price-card-featured {
+  background: linear-gradient(180deg, #ffffff 0%, var(--orange-50) 100%);
+  border: 2px solid var(--orange-400);
+  box-shadow: var(--shadow-orange);
+  transform: translateY(-6px);
+}
+.price-card-featured:hover {
+  transform: translateY(-10px);
+  box-shadow: 0 36px 70px -22px rgba(234, 88, 12, .50),
+              0 12px 22px rgba(234, 88, 12, .18);
+}
+.price-badge {
+  position: absolute; top: 16px; right: 16px;
+  background: linear-gradient(135deg, var(--orange-500), var(--orange-600));
+  color: var(--white); font-size: .72rem; font-weight: 800; letter-spacing: .06em;
+  padding: 5px 11px; border-radius: 999px;
+  box-shadow: 0 6px 14px -4px rgba(234, 88, 12, .50);
+}
+.price-tier-pro {
+  background: linear-gradient(135deg, var(--orange-600), var(--amber-500));
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+}
+.price-tagline {
+  color: var(--muted); font-size: .92rem; margin: -.8rem 0 1.6rem;
+}
+.price-tagline strong { color: var(--orange-700); }
+
+.price-compare {
+  max-width: 720px; margin: 50px auto 0;
+  text-align: center; color: var(--body); font-size: 1rem;
+  padding: 22px 28px; background: var(--white); border-radius: var(--radius);
+  border: 1px solid var(--line-2);
+}
+.price-compare strong { color: var(--orange-700); }
+
+@media (max-width: 720px) {
+  .price-card-featured { transform: none; }
+  .price-card-featured:hover { transform: translateY(-4px); }
 }
 .price-card::before {
   content: ""; position: absolute; inset: 0 0 auto 0; height: 5px;
