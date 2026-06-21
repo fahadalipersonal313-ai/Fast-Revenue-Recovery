@@ -223,6 +223,14 @@ def _records_from_df(df: pd.DataFrame, mapping: dict, status_map: dict | None = 
 # ---------------------------------------------------------------------------
 # Pages
 # ---------------------------------------------------------------------------
+def _safe_image(path: str, caption: str | None = None) -> None:
+    """Render an image if present; silently skip if the assets folder hasn't
+    been populated yet. Keeps the welcome page graceful pre-photo-upload."""
+    from pathlib import Path as _P
+    if _P(path).exists():
+        st.image(path, use_container_width=True, caption=caption)
+
+
 def page_welcome() -> None:
     """Premium onboarding experience — auto-shown on first login, always
     accessible from the sidebar as "✨ Get started" afterwards. Includes a
@@ -238,27 +246,31 @@ def page_welcome() -> None:
     email_set = bool(settings.email_address and settings.email_app_password)
     ai_on = ai_available(settings)
 
-    # --- Hero ---------------------------------------------------------------
-    st.markdown(
-        f"""
-        <div class="rrd-hero">
-          <div class="rrd-hero-orb rrd-orb-1"></div>
-          <div class="rrd-hero-orb rrd-orb-2"></div>
-          <div class="rrd-hero-orb rrd-orb-3"></div>
-          <div class="rrd-hero-inner">
-            <div class="rrd-hero-eyebrow">Welcome aboard 🎉</div>
-            <h1 class="rrd-hero-title">Hi {company},<br/>let's recover some revenue.</h1>
-            <p class="rrd-hero-sub">
-              Revenue Recovery Desk is your AI-assisted second pair of hands — it
-              reads your invoices, quotes and leads, spots what needs chasing,
-              drafts polite follow-ups, and waits for your green light before
-              anything goes out. <strong>You stay in control. Always.</strong>
-            </p>
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    # --- Hero (text left, founder photo right) -----------------------------
+    hero_col_l, hero_col_r = st.columns([1.35, 1], gap="medium")
+    with hero_col_l:
+        st.markdown(
+            f"""
+            <div class="rrd-hero">
+              <div class="rrd-hero-orb rrd-orb-1"></div>
+              <div class="rrd-hero-orb rrd-orb-2"></div>
+              <div class="rrd-hero-orb rrd-orb-3"></div>
+              <div class="rrd-hero-inner">
+                <div class="rrd-hero-eyebrow">Welcome aboard 🎉</div>
+                <h1 class="rrd-hero-title">Hi {company},<br/>let's recover<br/>some revenue.</h1>
+                <p class="rrd-hero-sub">
+                  Revenue Recovery Desk is your AI-assisted second pair of hands —
+                  it reads your invoices, quotes and leads, spots what needs
+                  chasing, drafts polite follow-ups, and waits for your green
+                  light. <strong>You stay in control. Always.</strong>
+                </p>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with hero_col_r:
+        _safe_image("assets/01-hero-portrait.jpg", caption=None)
 
     # --- Section 1: What this app can do ----------------------------------
     st.markdown("<div class='rrd-wsec'><div class='rrd-wsec-num'>1</div>"
@@ -436,6 +448,21 @@ def page_welcome() -> None:
         """,
         unsafe_allow_html=True,
     )
+
+    # --- Section 4: Built for teams like yours (photo strip) ---------------
+    st.markdown("<div class='rrd-wsec'><div class='rrd-wsec-num'>4</div>"
+                "<div class='rrd-wsec-head'>Built for teams like yours</div>"
+                "<div class='rrd-wsec-sub'>From solo founders to small ops teams — "
+                "we ship the polite-but-firm follow-ups, you keep the relationships</div>"
+                "</div>", unsafe_allow_html=True)
+
+    pc1, pc2, pc3 = st.columns(3, gap="medium")
+    with pc1:
+        _safe_image("assets/05-team-of-three.jpg")
+    with pc2:
+        _safe_image("assets/06-team-of-four.jpg")
+    with pc3:
+        _safe_image("assets/08-team-celebration.jpg")
 
     st.markdown("<div class='rrd-finish'></div>", unsafe_allow_html=True)
     fc1, fc2, fc3 = st.columns([1, 2, 1])

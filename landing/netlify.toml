@@ -1,0 +1,20 @@
+# Netlify deploy config for the landing page.
+# Drop the entire `landing/` folder into Netlify (drag-and-drop) or connect
+# this GitHub repo and point Netlify at this subfolder. No build step needed —
+# it's a static HTML site.
+
+[build]
+  publish = "."
+  # No build command — pure static site.
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
