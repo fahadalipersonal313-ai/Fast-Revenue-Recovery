@@ -106,6 +106,26 @@ class AgentMemory:
                    path=self.path)
 
     # ------------------------------------------------------------------
+    # First-run / onboarding state — used to auto-route brand-new signups
+    # to the welcome page until they've explicitly dismissed it.
+    # ------------------------------------------------------------------
+    def onboarding_completed(self) -> bool:
+        rows = db.query(
+            "SELECT value FROM settings WHERE key='onboarding_completed_at'",
+            path=self.path,
+        )
+        return bool(rows and rows[0]["value"])
+
+    def mark_onboarding_completed(self) -> None:
+        from datetime import datetime
+        db.execute(
+            "INSERT INTO settings(key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            ("onboarding_completed_at", json.dumps(datetime.utcnow().isoformat())),
+            path=self.path,
+        )
+
+    # ------------------------------------------------------------------
     # Customers and records
     # ------------------------------------------------------------------
     def upsert_customer(self, name: str, email: str = "", phone: str = "") -> None:

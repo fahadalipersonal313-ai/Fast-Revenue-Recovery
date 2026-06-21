@@ -216,6 +216,152 @@ input, textarea, [data-baseweb="select"] input { border:none !important; box-sha
     )
 
 
+def welcome_styles() -> None:
+    """Premium onboarding styles — gradient hero with animated orbs, glass
+    pipeline cards with depth and hover lift, big rounded buttons. Scoped
+    via the .rrd-hero / .rrd-pipe* / .rrd-wsec / .rrd-ai-* class families
+    so it doesn't leak into the rest of the app."""
+    st.markdown(
+        """
+<style>
+/* ===================== Hero ===================== */
+.rrd-hero {
+  position:relative; overflow:hidden; border-radius:28px;
+  padding:60px 56px 70px; margin:-.3rem 0 2.6rem;
+  background:
+    radial-gradient(1100px 380px at 12% -10%, rgba(129,140,248,.30), transparent 60%),
+    radial-gradient(900px 340px at 92% 10%, rgba(236,72,153,.20), transparent 60%),
+    linear-gradient(135deg, #0f172a 0%, #1e1b4b 55%, #312e81 100%);
+  color:#ffffff; box-shadow:0 30px 60px -22px rgba(15,23,42,.45),
+                            0 8px 22px -8px rgba(79,70,229,.35);
+}
+.rrd-hero-inner { position:relative; z-index:2; max-width:780px; }
+.rrd-hero-eyebrow {
+  display:inline-block; font-size:.74rem; font-weight:700; letter-spacing:.18em;
+  text-transform:uppercase; color:#a5b4fc; padding:6px 14px; border-radius:999px;
+  background:rgba(129,140,248,.16); border:1px solid rgba(165,180,252,.30);
+  margin-bottom:1.1rem; animation:rrd-fade-up .55s ease both; }
+.rrd-hero-title {
+  font-size:3.05rem; line-height:1.08; font-weight:800; letter-spacing:-.025em;
+  margin:0 0 1.05rem; color:#ffffff;
+  background:linear-gradient(135deg,#ffffff 30%,#c7d2fe 100%);
+  -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;
+  animation:rrd-fade-up .65s .05s ease both; }
+.rrd-hero-sub {
+  font-size:1.08rem; line-height:1.6; color:#cbd5e1; max-width:680px; margin:0;
+  animation:rrd-fade-up .75s .1s ease both; }
+.rrd-hero-sub strong { color:#ffffff; }
+
+/* Floating gradient orbs for depth */
+.rrd-hero-orb { position:absolute; border-radius:50%; filter:blur(50px); opacity:.55;
+  pointer-events:none; z-index:1; }
+.rrd-orb-1 { width:260px; height:260px; top:-70px; right:8%;
+  background:radial-gradient(circle, #818cf8 0%, transparent 70%);
+  animation:rrd-float-a 9s ease-in-out infinite; }
+.rrd-orb-2 { width:180px; height:180px; bottom:-40px; right:24%;
+  background:radial-gradient(circle, #ec4899 0%, transparent 70%);
+  animation:rrd-float-b 11s ease-in-out infinite; }
+.rrd-orb-3 { width:120px; height:120px; top:35%; right:2%;
+  background:radial-gradient(circle, #22d3ee 0%, transparent 70%);
+  animation:rrd-float-a 13s ease-in-out infinite reverse; }
+
+@keyframes rrd-float-a { 0%,100%{transform:translate(0,0)} 50%{transform:translate(-20px,18px)} }
+@keyframes rrd-float-b { 0%,100%{transform:translate(0,0)} 50%{transform:translate(22px,-14px)} }
+@keyframes rrd-fade-up { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
+
+/* ===================== Section header ===================== */
+.rrd-wsec { display:flex; align-items:center; gap:18px; margin:2.6rem 0 1.4rem; flex-wrap:wrap; }
+.rrd-wsec-num {
+  width:46px; height:46px; border-radius:14px; display:grid; place-items:center;
+  font-weight:800; font-size:1.25rem;
+  background:linear-gradient(135deg,#4f46e5,#7c3aed); color:#ffffff;
+  box-shadow:0 10px 22px -8px rgba(79,70,229,.55), inset 0 1px 0 rgba(255,255,255,.25); }
+.rrd-wsec-head { font-size:1.6rem; font-weight:800; color:#0f172a; letter-spacing:-.018em;
+  line-height:1.1; }
+.rrd-wsec-sub { color:#64748b; font-size:.97rem; flex-basis:100%; padding-left:64px;
+  margin-top:-6px; }
+
+/* ===================== Pipeline cards (3D-ish glass) ===================== */
+.rrd-pipes { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
+  gap:22px; margin:.6rem 0 1.2rem; perspective:1200px; }
+.rrd-pipe {
+  position:relative; background:#ffffff; border-radius:22px; padding:28px 26px 24px;
+  border:1px solid #e7e9ef; overflow:hidden;
+  box-shadow:0 30px 50px -28px rgba(15,23,42,.30),
+             0 10px 22px -12px rgba(79,70,229,.18),
+             inset 0 1px 0 #ffffff;
+  transform-style:preserve-3d; transition:transform .35s cubic-bezier(.22,1,.36,1),
+                                          box-shadow .35s ease;
+  animation:rrd-fade-up .6s ease both; }
+.rrd-pipe:hover {
+  transform:translateY(-8px) rotateX(2deg);
+  box-shadow:0 50px 80px -32px rgba(15,23,42,.40),
+             0 18px 40px -16px rgba(79,70,229,.32); }
+.rrd-pipe::before {
+  content:""; position:absolute; inset:0 0 auto 0; height:5px;
+  background:linear-gradient(90deg, var(--c1, #4f46e5), var(--c2, #7c3aed)); }
+.rrd-pipe-1 { --c1:#4f46e5; --c2:#7c3aed; }
+.rrd-pipe-2 { --c1:#06b6d4; --c2:#3b82f6; }
+.rrd-pipe-3 { --c1:#ec4899; --c2:#f59e0b; }
+
+.rrd-pipe-glyph {
+  font-size:2.2rem; width:64px; height:64px; border-radius:18px; display:grid; place-items:center;
+  background:linear-gradient(135deg, var(--c1) 0%, var(--c2) 100%);
+  box-shadow:0 14px 28px -10px color-mix(in srgb, var(--c1) 60%, transparent),
+             inset 0 1px 0 rgba(255,255,255,.30);
+  margin-bottom:1.1rem; }
+.rrd-pipe-step {
+  font-size:.72rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase;
+  color:#94a3b8; margin-bottom:.4rem; }
+.rrd-pipe h3 { font-size:1.2rem; font-weight:800; color:#0f172a; margin:0 0 .55rem;
+  letter-spacing:-.015em; }
+.rrd-pipe p { color:#475569; font-size:.94rem; line-height:1.55; margin:0 0 1.05rem; }
+.rrd-pipe-tag {
+  display:inline-block; font-size:.74rem; font-weight:600;
+  color:#4338ca; background:#eef2ff; padding:5px 11px; border-radius:999px;
+  border:1px solid #c7d2fe; }
+
+/* ===================== Status row (email/AI on/off) ===================== */
+.rrd-status-row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin:-.4rem 0 1rem; }
+.rrd-badge { display:inline-flex; align-items:center; gap:6px; padding:7px 14px;
+  border-radius:999px; font-weight:700; font-size:.82rem; letter-spacing:.01em; }
+.rrd-badge-ok { background:#dcfce7; color:#15803d; border:1px solid #86efac; }
+.rrd-badge-todo { background:#fef3c7; color:#a16207; border:1px solid #fcd34d; }
+.rrd-status-mail { color:#64748b; font-size:.9rem; }
+
+/* ===================== Numbered steps (email setup) ===================== */
+.rrd-steps { display:flex; flex-direction:column; gap:14px; margin:.4rem 0 1.2rem; }
+.rrd-step { display:flex; gap:16px; align-items:flex-start;
+  background:#fbfbfe; border:1px solid #e7e9ef; border-radius:14px; padding:14px 16px; }
+.rrd-step-dot {
+  width:30px; height:30px; border-radius:50%; display:grid; place-items:center; flex:0 0 auto;
+  background:linear-gradient(135deg,#4f46e5,#7c3aed); color:#ffffff; font-weight:800; font-size:.92rem;
+  box-shadow:0 6px 14px -4px rgba(79,70,229,.45); }
+.rrd-step-body { color:#334155; font-size:.95rem; line-height:1.55; }
+.rrd-step-body strong { color:#0f172a; }
+.rrd-step-body a { color:#4f46e5; font-weight:600; }
+
+/* ===================== AI cards ===================== */
+.rrd-ai-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:18px;
+  margin:.4rem 0 1.4rem; }
+.rrd-ai-card { background:linear-gradient(180deg,#ffffff 0%,#fafbff 100%);
+  border:1px solid #e7e9ef; border-radius:18px; padding:22px 20px;
+  box-shadow:0 10px 22px -12px rgba(15,23,42,.10); transition:transform .25s ease; }
+.rrd-ai-card:hover { transform:translateY(-3px); }
+.rrd-ai-ic { font-size:1.7rem; width:48px; height:48px; border-radius:14px; display:grid; place-items:center;
+  background:linear-gradient(135deg,#eef2ff,#fce7f3); margin-bottom:.7rem; }
+.rrd-ai-card h4 { margin:0 0 .35rem; font-size:1.02rem; font-weight:800; color:#0f172a; }
+.rrd-ai-card p { margin:0; color:#475569; font-size:.9rem; line-height:1.55; }
+
+/* ===================== Finish ===================== */
+.rrd-finish { margin-top:2rem; height:1px;
+  background:linear-gradient(90deg,transparent,#e7e9ef,transparent); }
+</style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def page_header(title: str, subtitle: str = "", icon: str = "") -> None:
     """Clean page title block with an optional one-line subtitle and hairline."""
     ic = f'<span class="ic">{icon}</span>' if icon else ""

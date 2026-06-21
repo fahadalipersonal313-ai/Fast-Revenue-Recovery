@@ -223,6 +223,227 @@ def _records_from_df(df: pd.DataFrame, mapping: dict, status_map: dict | None = 
 # ---------------------------------------------------------------------------
 # Pages
 # ---------------------------------------------------------------------------
+def page_welcome() -> None:
+    """Premium onboarding experience — auto-shown on first login, always
+    accessible from the sidebar as "✨ Get started" afterwards. Includes a
+    live email-credentials form so users finish setup inside the welcome flow
+    instead of being told to "go find Settings."
+    """
+    mem = get_memory()
+    settings = get_settings()
+    user = _require_login()
+    ui.welcome_styles()
+
+    company = user.company_name or "there"
+    email_set = bool(settings.email_address and settings.email_app_password)
+    ai_on = ai_available(settings)
+
+    # --- Hero ---------------------------------------------------------------
+    st.markdown(
+        f"""
+        <div class="rrd-hero">
+          <div class="rrd-hero-orb rrd-orb-1"></div>
+          <div class="rrd-hero-orb rrd-orb-2"></div>
+          <div class="rrd-hero-orb rrd-orb-3"></div>
+          <div class="rrd-hero-inner">
+            <div class="rrd-hero-eyebrow">Welcome aboard 🎉</div>
+            <h1 class="rrd-hero-title">Hi {company},<br/>let's recover some revenue.</h1>
+            <p class="rrd-hero-sub">
+              Revenue Recovery Desk is your AI-assisted second pair of hands — it
+              reads your invoices, quotes and leads, spots what needs chasing,
+              drafts polite follow-ups, and waits for your green light before
+              anything goes out. <strong>You stay in control. Always.</strong>
+            </p>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # --- Section 1: What this app can do ----------------------------------
+    st.markdown("<div class='rrd-wsec'><div class='rrd-wsec-num'>1</div>"
+                "<div class='rrd-wsec-head'>What this app can do</div>"
+                "<div class='rrd-wsec-sub'>Three workflows you'll use again and again</div>"
+                "</div>", unsafe_allow_html=True)
+
+    st.markdown(
+        """
+        <div class="rrd-pipes">
+          <div class="rrd-pipe rrd-pipe-1">
+            <div class="rrd-pipe-glyph">🧮</div>
+            <div class="rrd-pipe-step">Step 1</div>
+            <h3>Generate invoices</h3>
+            <p>Build a clean PDF invoice in 30 seconds — single or bulk from a
+               spreadsheet. Auto-saved as an email draft when you're ready.</p>
+            <div class="rrd-pipe-tag">Invoices → Generate tab</div>
+          </div>
+          <div class="rrd-pipe rrd-pipe-2">
+            <div class="rrd-pipe-glyph">📤</div>
+            <div class="rrd-pipe-step">Step 2</div>
+            <h3>Import your data</h3>
+            <p>Drop in an Excel or CSV of invoices, quotes or leads. The
+               column-mapper learns your client's format the first time —
+               every future upload becomes one click.</p>
+            <div class="rrd-pipe-tag">Upload</div>
+          </div>
+          <div class="rrd-pipe rrd-pipe-3">
+            <div class="rrd-pipe-glyph">🤖</div>
+            <div class="rrd-pipe-step">Step 3</div>
+            <h3>Get a recovery plan</h3>
+            <p>The agent ranks every record by urgency, drafts a polite
+               follow-up, and queues it for your approval. You hit
+               <em>Approve</em>, copy the message, send it from your own inbox.</p>
+            <div class="rrd-pipe-tag">Approvals · Daily Plan</div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    c1, c2, c3 = st.columns(3)
+    if c1.button("Try sample data", use_container_width=True, key="welc_try_sample"):
+        _goto("📤 Upload")
+    if c2.button("Open Upload", use_container_width=True, key="welc_open_upload"):
+        _goto("📤 Upload")
+    if c3.button("Open Invoices", use_container_width=True, key="welc_open_inv"):
+        _goto("🧾 Invoices")
+
+    # --- Section 2: Connect your email --------------------------------------
+    st.markdown("<div class='rrd-wsec'><div class='rrd-wsec-num'>2</div>"
+                "<div class='rrd-wsec-head'>Connect your email (2 minutes)</div>"
+                "<div class='rrd-wsec-sub'>So every drafted message lands in your "
+                "own Drafts folder — nothing is ever sent automatically</div>"
+                "</div>", unsafe_allow_html=True)
+
+    badge = ("<span class='rrd-badge rrd-badge-ok'>✓ Connected</span>"
+             if email_set else
+             "<span class='rrd-badge rrd-badge-todo'>● Not connected yet</span>")
+    st.markdown(f"<div class='rrd-status-row'>{badge}"
+                f"{'<span class=rrd-status-mail>'+settings.email_address+'</span>' if email_set else ''}"
+                f"</div>", unsafe_allow_html=True)
+
+    with st.expander("📧 Step-by-step: connect your Gmail / Workspace", expanded=not email_set):
+        st.markdown(
+            """
+            <div class="rrd-steps">
+              <div class="rrd-step">
+                <div class="rrd-step-dot">1</div>
+                <div class="rrd-step-body">
+                  <strong>Turn on 2-Step Verification</strong> on your Google account.
+                  Open <a href="https://myaccount.google.com/security" target="_blank">myaccount.google.com/security</a>
+                  → click <em>2-Step Verification</em> → finish the wizard. Required before Step 2.
+                </div>
+              </div>
+              <div class="rrd-step">
+                <div class="rrd-step-dot">2</div>
+                <div class="rrd-step-body">
+                  <strong>Generate an App Password.</strong> Go to
+                  <a href="https://myaccount.google.com/apppasswords" target="_blank">myaccount.google.com/apppasswords</a>,
+                  name it "Revenue Recovery Desk", click <em>Create</em>. Google shows you a
+                  <strong>16-character code</strong> (with spaces — paste it as-is, spaces are fine).
+                </div>
+              </div>
+              <div class="rrd-step">
+                <div class="rrd-step-dot">3</div>
+                <div class="rrd-step-body">
+                  <strong>Paste both below and click Connect.</strong> Your app password is
+                  encrypted with the app's secret key before being stored — never readable in plain
+                  text, never shared with other accounts.
+                </div>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        with st.form("welcome_email_form"):
+            e_col1, e_col2 = st.columns(2)
+            wem_addr = e_col1.text_input(
+                "Your email address",
+                value=settings.email_address or "",
+                placeholder="you@yourcompany.com",
+                key="welc_email_addr",
+            )
+            wem_pw = e_col2.text_input(
+                "16-character App Password",
+                type="password",
+                placeholder="xxxx xxxx xxxx xxxx",
+                key="welc_email_pw",
+            )
+            wem_submit = st.form_submit_button(
+                "🔐 Connect email",
+                type="primary",
+                use_container_width=True,
+            )
+        if wem_submit:
+            if not wem_addr or not wem_pw:
+                st.error("Both fields are required.")
+            else:
+                mem.save_email_credentials(wem_addr.strip(), wem_pw.strip())
+                st.session_state.pop("settings", None)  # reload with new creds
+                st.success("✓ Email connected. Drafts will be saved to your Drafts folder.")
+                st.rerun()
+
+        st.caption(
+            "On Outlook / Microsoft 365? Plain-password IMAP is disabled by Microsoft. "
+            "OAuth integration is on the roadmap — for now Outlook customers need to "
+            "wait until that ships."
+        )
+
+    # --- Section 3: AI helper -----------------------------------------------
+    st.markdown("<div class='rrd-wsec'><div class='rrd-wsec-num'>3</div>"
+                "<div class='rrd-wsec-head'>Your AI helper</div>"
+                "<div class='rrd-wsec-sub'>What it does today — and what you control</div>"
+                "</div>", unsafe_allow_html=True)
+
+    ai_status_html = (
+        "<span class='rrd-badge rrd-badge-ok'>✓ AI is ON</span>"
+        if ai_on else
+        "<span class='rrd-badge rrd-badge-todo'>● AI is OFF (rules mode)</span>"
+    )
+    st.markdown(f"<div class='rrd-status-row'>{ai_status_html}"
+                f"<span class='rrd-status-mail'>Powered by Google Gemini · free tier</span>"
+                f"</div>", unsafe_allow_html=True)
+
+    st.markdown(
+        """
+        <div class="rrd-ai-cards">
+          <div class="rrd-ai-card">
+            <div class="rrd-ai-ic">✍️</div>
+            <h4>Smarter message drafts</h4>
+            <p>The agent rewrites each follow-up in three tones — friendly, firm, and
+               urgent — so you pick what fits the customer relationship.</p>
+          </div>
+          <div class="rrd-ai-card">
+            <div class="rrd-ai-ic">🧠</div>
+            <h4>Reply intent detection</h4>
+            <p>Paste a customer's reply, and the AI classifies it (paying soon,
+               disputing, asking for more time…) and suggests your next move.</p>
+          </div>
+          <div class="rrd-ai-card">
+            <div class="rrd-ai-ic">🛡️</div>
+            <h4>You stay in control</h4>
+            <p>The AI never sends messages and never approves on its own. Every
+               action waits for your click. You can turn AI off any time in Settings.</p>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("<div class='rrd-finish'></div>", unsafe_allow_html=True)
+    fc1, fc2, fc3 = st.columns([1, 2, 1])
+    with fc2:
+        if st.button("✨  I'm ready — take me to the app",
+                     type="primary", use_container_width=True, key="welc_finish"):
+            mem.mark_onboarding_completed()
+            _goto("🏠 Home")
+        st.caption(
+            "You can revisit this guide any time from **✨ Get started** in the sidebar.",
+            help=None,
+        )
+
+
 def page_dashboard() -> None:
     mem = get_memory()
     s = analytics.stats(mem)
@@ -1604,6 +1825,7 @@ def _bulk_reminder_dialog() -> None:
 # ---------------------------------------------------------------------------
 SIDEBAR_GROUPS: list[tuple[str | None, list[tuple[str, callable]]]] = [
     (None, [
+        ("✨ Get started", page_welcome),
         ("🏠 Home", page_dashboard),
         ("📤 Upload", page_upload),
     ]),
@@ -1658,9 +1880,14 @@ def main() -> None:
 
     if "_pending_nav" in st.session_state:
         st.session_state["nav_choice"] = st.session_state.pop("_pending_nav")
-    choice = st.session_state.get("nav_choice", next(iter(PAGES)))
+    # Brand-new signups land on the welcome page until they finish (or skip)
+    # onboarding. The flag is persisted in their tenant DB so it survives
+    # logouts. Once they've dismissed it, "🏠 Home" becomes the default.
+    if not mem.onboarding_completed() and "nav_choice" not in st.session_state:
+        st.session_state["nav_choice"] = "✨ Get started"
+    choice = st.session_state.get("nav_choice", "🏠 Home")
     if choice not in PAGES:  # guard against legacy session state from old labels
-        choice = next(iter(PAGES))
+        choice = "🏠 Home"
         st.session_state["nav_choice"] = choice
 
     # --- Top: workspace identity ---
