@@ -1,8 +1,8 @@
 # Revenue Recovery Desk — Landing Page
 
-Static HTML/CSS marketing site for the app. Built to feel like Chaser /
-Stripe / Linear marketing surfaces: large hero, scroll-revealed sections,
-warm orange + amber + white palette, founder photo, team photos.
+Static HTML/CSS marketing site for the app. Premium SaaS marketing
+aesthetic: large hero, scroll-revealed sections, warm orange + amber +
+white palette, founder photo, conceptual feature illustrations.
 
 ## Preview locally
 
