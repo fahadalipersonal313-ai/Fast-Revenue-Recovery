@@ -270,7 +270,7 @@ def page_welcome() -> None:
             unsafe_allow_html=True,
         )
     with hero_col_r:
-        _safe_image("assets/01-hero-portrait.jpg", caption=None)
+        _safe_image("assets/01-hero-portrait.png", caption=None)
 
     # --- Section 1: What this app can do ----------------------------------
     st.markdown("<div class='rrd-wsec'><div class='rrd-wsec-num'>1</div>"
@@ -458,11 +458,11 @@ def page_welcome() -> None:
 
     pc1, pc2, pc3 = st.columns(3, gap="medium")
     with pc1:
-        _safe_image("assets/05-team-of-three.jpg")
+        _safe_image("assets/05-team-of-three.png")
     with pc2:
-        _safe_image("assets/06-team-of-four.jpg")
+        _safe_image("assets/06-team-of-four.png")
     with pc3:
-        _safe_image("assets/08-team-celebration.jpg")
+        _safe_image("assets/08-team-celebration.png")
 
     st.markdown("<div class='rrd-finish'></div>", unsafe_allow_html=True)
     fc1, fc2, fc3 = st.columns([1, 2, 1])
