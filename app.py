@@ -45,6 +45,7 @@ from src.ai_helper import (
 from src.reply_actions import describe_classification
 from src import auth
 from src import crypto
+from src import gating
 from src.config import Settings
 from src.memory import AgentMemory
 from src.scheduler import RecoveryScheduler, load_active_records, run_daily_analysis
@@ -198,6 +199,11 @@ def _goto(page_label: str) -> None:
     """Queue a sidebar navigation change to take effect on the next run."""
     st.session_state["_pending_nav"] = page_label
     st.rerun()
+
+
+def _ai_unlocked() -> bool:
+    """AI features only appear when the user is on Pro AND AI is configured."""
+    return gating.is_pro(_require_login()) and ai_available(get_settings())
 
 
 # ---------------------------------------------------------------------------
@@ -651,6 +657,18 @@ def page_upload() -> None:
     remember = sc2.checkbox("Teach the detector", value=True,
                             help="Remember these column names to improve auto-detection for all clients.")
 
+    # Free-tier gate: pre-count incoming rows and block if it'd breach the
+    # monthly limit. Pro users skip this entirely.
+    user = _require_login()
+    incoming_count = len(df)
+    allowed, reason = gating.can_upload_records(user, mem, incoming_count)
+    if not allowed:
+        ui.upgrade_card(
+            "You've hit the Free plan's monthly limit",
+            reason,
+        )
+        return
+
     if st.button("Process & analyze", type="primary", disabled=bool(missing)):
         if profile_name.strip():
             mem.save_mapping_profile(
@@ -909,7 +927,7 @@ def page_approvals() -> None:
             st.caption("👉 After approving, copy this and send it yourself, then **Mark completed**.")
 
             # --- AI tone variants: rewrite the message gentle / neutral / firm ---
-            if ai_available(settings):
+            if _ai_unlocked():
                 vkey = f"variants_{item['id']}"
                 if st.button("✨ Suggest tone variants (gentle / neutral / firm)",
                              key=f"tv_{item['id']}"):
@@ -947,7 +965,7 @@ def page_approvals() -> None:
                 email_override = ""
 
             # --- AI reply-intent detection: paste the customer's reply, get advice ---
-            if ai_available(settings):
+            if _ai_unlocked():
                 with st.popover("📩 Customer replied? Analyze it"):
                     reply_text = st.text_area(
                         "Paste the customer's reply", "",
@@ -1029,7 +1047,17 @@ def page_customer_history() -> None:
 
 def page_reports() -> None:
     mem = get_memory()
+    user = _require_login()
     ui.page_header("Saved Reports", "Download polished Excel reports for your records or accountant.")
+
+    if not gating.is_pro(user):
+        ui.upgrade_card(
+            "Reports & Excel exports are Pro features",
+            "Download accountant-ready Excel reports — invoice ledger, quote pipeline, "
+            "lead activity, message history, decision log, and a combined workbook. "
+            "Upgrade to unlock every report.",
+        )
+        return
     builders = {
         "📋 Approval queue": lambda: ex.to_excel_bytes({"Approvals": ex.approvals_frame(mem)}),
         "✉️ Message history": lambda: ex.to_excel_bytes({"Messages": ex.messages_frame(mem)}),
@@ -1634,6 +1662,17 @@ _BULK_LABELS = {
 def _render_bulk_invoices() -> None:
     mem = get_memory()
     settings = get_settings()
+    user = _require_login()
+
+    # Bulk generation is a Pro feature — show the upgrade card instead.
+    if not gating.is_pro(user):
+        ui.upgrade_card(
+            "Bulk invoice generation is a Pro feature",
+            "Generate dozens of branded PDF invoices from a single spreadsheet, "
+            "with each customer's saved format applied automatically. Free users "
+            "can still build invoices one at a time in the Single tab.",
+        )
+        return
 
     st.caption("Upload a spreadsheet of outstanding invoices and generate a PDF for "
                "every row at once. Each customer's saved format (branding, currency, "
@@ -1919,6 +1958,25 @@ def main() -> None:
     sb1, sb2 = st.sidebar.columns(2)
     sb1.metric("Pending", s["pending"])
     sb2.metric("Due today", s["due_today"])
+
+    # Plan indicator — small chip showing Free/Pro, with an inline upgrade
+    # button for Free users that opens the landing pricing section.
+    if gating.is_pro(user):
+        st.sidebar.markdown(
+            "<div class='rrd-plan-chip rrd-plan-pro'>✨ Pro plan</div>",
+            unsafe_allow_html=True,
+        )
+    else:
+        used = gating.record_count_this_month(mem)
+        remaining = max(0, gating.FREE_RECORD_LIMIT_PER_MONTH - used)
+        st.sidebar.markdown(
+            f"<div class='rrd-plan-chip rrd-plan-free'>Free plan · "
+            f"{remaining}/{gating.FREE_RECORD_LIMIT_PER_MONTH} records left this month</div>"
+            f"<a class='rrd-plan-upgrade' href='https://revenue-recovery-desk.netlify.app/#pricing' "
+            f"target='_blank' rel='noopener'>✨ Upgrade to Pro →</a>",
+            unsafe_allow_html=True,
+        )
+
     badge = "AI on" if ai_available(settings) else "AI off · rules"
     st.sidebar.caption(f"Mode: {badge}")
     if st.sidebar.button("Log out", key="nav_logout", use_container_width=True):

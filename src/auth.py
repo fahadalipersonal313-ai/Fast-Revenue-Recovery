@@ -49,6 +49,11 @@ _RESET_CODE_TTL_MINUTES = 30
 _MIGRATIONS = (
     "ALTER TABLE users ADD COLUMN reset_code_hash TEXT",
     "ALTER TABLE users ADD COLUMN reset_expires_at TEXT",
+    # Subscription tier — 'free' (default) or 'pro'. pro_until is the ISO
+    # timestamp when an active Pro subscription expires (NULL for lifetime
+    # / free users).
+    "ALTER TABLE users ADD COLUMN tier TEXT DEFAULT 'free'",
+    "ALTER TABLE users ADD COLUMN pro_until TEXT",
 )
 
 
@@ -66,6 +71,8 @@ class User:
     email: str
     tenant_slug: str
     company_name: str
+    tier: str = "free"           # 'free' | 'pro'
+    pro_until: Optional[str] = None  # ISO datetime; None for free or lifetime pro
 
 
 @contextmanager
@@ -135,15 +142,16 @@ def signup(email: str, password: str, company_name: str = "") -> User:
         user_id = int(cur.lastrowid)
 
     tenant_db_path(slug).parent.mkdir(parents=True, exist_ok=True)
-    return User(id=user_id, email=email, tenant_slug=slug, company_name=company_name.strip())
+    return User(id=user_id, email=email, tenant_slug=slug,
+                company_name=company_name.strip(), tier="free", pro_until=None)
 
 
 def login(email: str, password: str) -> User:
     email = email.strip().lower()
     with _connect() as conn:
         row = conn.execute(
-            "SELECT id, email, password_hash, salt, tenant_slug, company_name "
-            "FROM users WHERE email=?",
+            "SELECT id, email, password_hash, salt, tenant_slug, company_name, "
+            "tier, pro_until FROM users WHERE email=?",
             (email,),
         ).fetchone()
     if not row:
@@ -153,6 +161,7 @@ def login(email: str, password: str) -> User:
     return User(
         id=row["id"], email=row["email"], tenant_slug=row["tenant_slug"],
         company_name=row["company_name"] or "",
+        tier=(row["tier"] or "free"), pro_until=row["pro_until"],
     )
 
 
@@ -164,13 +173,27 @@ def tenant_db_path(tenant_slug: str) -> Path:
 def find_user_by_id(user_id: int) -> Optional[User]:
     with _connect() as conn:
         row = conn.execute(
-            "SELECT id, email, tenant_slug, company_name FROM users WHERE id=?",
+            "SELECT id, email, tenant_slug, company_name, tier, pro_until "
+            "FROM users WHERE id=?",
             (user_id,),
         ).fetchone()
     if not row:
         return None
     return User(id=row["id"], email=row["email"], tenant_slug=row["tenant_slug"],
-                company_name=row["company_name"] or "")
+                company_name=row["company_name"] or "",
+                tier=(row["tier"] or "free"), pro_until=row["pro_until"])
+
+
+def set_tier(user_id: int, tier: str, pro_until: Optional[str] = None) -> None:
+    """Manually upgrade or downgrade a user's plan. Used by Lemon Squeezy
+    webhooks once Phase 3 ships, and for manual grants in the meantime."""
+    if tier not in {"free", "pro"}:
+        raise ValueError(f"invalid tier: {tier!r}")
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE users SET tier=?, pro_until=? WHERE id=?",
+            (tier, pro_until, user_id),
+        )
 
 
 # ---------------------------------------------------------------------------

@@ -88,6 +88,33 @@ section[data-testid="stSidebar"] .block-container { padding-top:1.2rem; padding-
 
 .rrd-side-bottom { margin-top:1.1rem; padding-top:.8rem; border-top:1px solid #1e293b; }
 
+/* Plan chip in sidebar bottom — Free vs Pro indicator */
+.rrd-plan-chip {
+  margin:.8rem .25rem .4rem; padding:8px 12px; border-radius:10px;
+  font-size:.78rem; font-weight:600; letter-spacing:.01em; line-height:1.35;
+}
+.rrd-plan-pro {
+  color:#ffffff;
+  background:linear-gradient(135deg,#ea580c 0%, #f59e0b 100%);
+  box-shadow:0 6px 14px -6px rgba(234,88,12,.55);
+  text-align:center;
+}
+.rrd-plan-free {
+  color:#cbd5e1; background:#1e293b; border:1px solid #334155;
+}
+.rrd-plan-upgrade {
+  display:block; margin:.4rem .25rem .2rem; padding:8px 12px;
+  border-radius:10px; text-align:center; text-decoration:none;
+  color:#ffffff !important; font-weight:700; font-size:.84rem;
+  background:linear-gradient(135deg,#f97316 0%, #ea580c 100%);
+  box-shadow:0 8px 16px -6px rgba(234,88,12,.50);
+  transition:transform .12s ease, box-shadow .12s ease;
+}
+.rrd-plan-upgrade:hover {
+  transform:translateY(-1px);
+  box-shadow:0 12px 22px -8px rgba(234,88,12,.60);
+}
+
 /* Sidebar buttons: flat, transparent nav items; active state = solid indigo */
 section[data-testid="stSidebar"] .stButton>button {
   background:transparent !important; border:none !important; color:#cbd5e1 !important;
@@ -269,6 +296,65 @@ input, textarea, [data-baseweb="select"] input { border:none !important; box-sha
 .rrd-auth .brand { font-weight:800; font-size:1.7rem; color:#0f172a; letter-spacing:-.02em; }
 .rrd-auth .tag { color:#64748b; font-size:.95rem; margin-top:.4rem; }
 </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def upgrade_card(headline: str, body: str, *,
+                 landing_url: str = "https://revenue-recovery-desk.netlify.app/#pricing") -> None:
+    """Premium 'Unlock with Pro' card shown anywhere a Free user hits a gate.
+
+    Soft-orange gradient background, sparkle eyebrow, big CTA. Drop this
+    inline wherever a Free user would otherwise have run a Pro-only feature.
+    """
+    st.markdown(
+        f"""
+        <div class="rrd-upgrade">
+          <div class="rrd-upgrade-eyebrow">✨ Pro feature</div>
+          <div class="rrd-upgrade-headline">{headline}</div>
+          <div class="rrd-upgrade-body">{body}</div>
+          <a class="rrd-upgrade-cta" href="{landing_url}" target="_blank" rel="noopener">
+            Upgrade to Pro — $15/month →
+          </a>
+          <div class="rrd-upgrade-meta">Cancel any time · No setup fee</div>
+        </div>
+        <style>
+        .rrd-upgrade {{
+          background:linear-gradient(135deg,#fff7ed 0%, #ffedd5 100%);
+          border:2px solid #fdba74; border-radius:18px; padding:28px 32px;
+          margin:1.4rem 0; text-align:center;
+          box-shadow:0 10px 24px -10px rgba(234,88,12,.28);
+        }}
+        .rrd-upgrade-eyebrow {{
+          display:inline-block; font-size:.74rem; font-weight:800; letter-spacing:.14em;
+          text-transform:uppercase; color:#c2410c;
+          background:#ffffff; padding:5px 13px; border-radius:999px;
+          border:1px solid #fed7aa; margin-bottom:.85rem;
+        }}
+        .rrd-upgrade-headline {{
+          font-size:1.35rem; font-weight:800; color:#1c1917;
+          letter-spacing:-.012em; margin-bottom:.45rem;
+        }}
+        .rrd-upgrade-body {{
+          color:#44403c; font-size:.96rem; line-height:1.55;
+          margin-bottom:1.2rem; max-width:520px; margin-left:auto; margin-right:auto;
+        }}
+        .rrd-upgrade-cta {{
+          display:inline-block; background:linear-gradient(180deg,#f97316 0%,#ea580c 100%);
+          color:#ffffff !important; padding:13px 26px; border-radius:10px;
+          font-weight:700; font-size:1rem; text-decoration:none;
+          box-shadow:0 12px 22px -8px rgba(234,88,12,.45);
+          transition:transform .15s ease, box-shadow .15s ease;
+        }}
+        .rrd-upgrade-cta:hover {{
+          transform:translateY(-1px);
+          box-shadow:0 16px 28px -8px rgba(234,88,12,.55);
+        }}
+        .rrd-upgrade-meta {{
+          color:#78716c; font-size:.82rem; margin-top:.9rem;
+        }}
+        </style>
         """,
         unsafe_allow_html=True,
     )
