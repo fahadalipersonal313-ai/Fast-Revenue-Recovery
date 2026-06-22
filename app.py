@@ -1670,15 +1670,10 @@ def _render_bulk_invoices() -> None:
     settings = get_settings()
     user = _require_login()
 
-    # Bulk generation is a Pro feature — show the upgrade card instead.
-    if not gating.is_pro(user):
-        ui.upgrade_card(
-            "Bulk invoice generation is a Pro feature",
-            "Generate dozens of branded PDF invoices from a single spreadsheet, "
-            "with each customer's saved format applied automatically. Free users "
-            "can still build invoices one at a time in the Single tab.",
-        )
-        return
+    # Bulk generation is normally a Pro feature, gated by gating.is_pro(user).
+    # TEMPORARILY UNGATED for Free users (2026-06-22) for testing/feedback —
+    # re-add the `if not gating.is_pro(user): ui.upgrade_card(...); return`
+    # block above before relying on this as a paid differentiator again.
 
     st.caption("Upload a spreadsheet of outstanding invoices and generate a PDF for "
                "every row at once. Each customer's saved format (branding, currency, "
