@@ -1042,7 +1042,10 @@ def page_customer_history() -> None:
     for tab, key in zip(tabs, ["records", "recommendations", "messages", "approvals"]):
         with tab:
             rows = hist[key]
-            st.dataframe(pd.DataFrame(rows), use_container_width=True) if rows else st.caption("Nothing here.")
+            if rows:
+                st.dataframe(pd.DataFrame(rows), use_container_width=True)
+            else:
+                st.caption("Nothing here.")
 
 
 def page_reports() -> None:
@@ -1075,7 +1078,10 @@ def page_reports() -> None:
     st.divider()
     st.markdown("##### 🕒 Recent activity")
     log = mem.decision_log(100)
-    st.dataframe(pd.DataFrame(log), use_container_width=True) if log else st.caption("No activity yet.")
+    if log:
+        st.dataframe(pd.DataFrame(log), use_container_width=True)
+    else:
+        st.caption("No activity yet.")
 
 
 def page_settings() -> None:

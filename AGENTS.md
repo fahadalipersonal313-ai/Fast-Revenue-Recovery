@@ -170,6 +170,17 @@ PYTHONPATH="D:\revenue-recovery-desk\.venv\Lib\site-packages" \
   Issuer name is `settings.company_name` (defaults to the placeholder
   "Your Company" from `config.py` until the user sets it in Settings).
 
+- **Fix: stray DeltaGenerator help text on Customers + Reports** (2026-06-22):
+  `page_customer_history` (line ~1045) and `page_reports` (line ~1078) used a
+  ternary *expression-statement* — `st.dataframe(...) if rows else st.caption(...)`
+  — to choose between rendering a table and an empty-state caption. Because
+  `st.dataframe` always executes and returns a `DeltaGenerator`, and the ternary
+  result was discarded rather than rendered, Streamlit was dumping the
+  `DeltaGenerator` repr/help text into the page body. Fixed by replacing both
+  with proper `if rows: ... else: ...` blocks. If a future page shows similar
+  raw object text instead of a widget, check for an `st.<widget>(...) if cond
+  else st.<other>(...)` expression-statement pattern.
+
 ## Open roadmap (proposed) — recommended order
 1. ~~Metrics layer~~ — **done** (Phase 1, see above).
 2. **Module dashboards + mega dashboard**: turn per-type pages into real module
