@@ -29,6 +29,7 @@ from reportlab.lib.units import inch
 from reportlab.platypus import (
     HRFlowable,
     Paragraph,
+    SimpleDocTemplate,
     Spacer,
     Table,
     TableStyle,
@@ -39,9 +40,6 @@ from src.invoice_generator import (  # noqa: F401  (re-exported for callers)
     CustomField,
     InvoiceError,
     LineItem,
-    _build_pdf,
-    _full_page_layout,
-    _letterhead_is_full_page,
     _money,
     _scaled_image,
 )
@@ -55,10 +53,11 @@ class QuoteError(InvoiceError):
 class QuoteData:
     """Everything the renderer needs to draw one quotation."""
 
-    # Issuer (your company)
+    # Issuer (your company) — name is mandatory, contact details are optional.
     from_company: str
     from_email: str = ""
     from_address: str = ""
+    from_phone: str = ""
 
     # Customer
     customer_name: str = ""
@@ -81,17 +80,17 @@ class QuoteData:
     # User-added extra fields, shown in an "Additional details" grid.
     custom_fields: List[CustomField] = field(default_factory=list)
 
-    # Branding images (raw bytes, PNG/JPG).
-    letterhead_png: Optional[bytes] = None
+    # Branding images (raw bytes, PNG/JPG). The logo is a small mark printed at
+    # ``logo_position`` ("top_left"/"top_center"/"top_right").
+    logo_png: Optional[bytes] = None
+    logo_position: str = "top_left"
     signature_png: Optional[bytes] = None
     signature_label: str = ""
 
 
 def _validate(data: QuoteData) -> None:
-    # Company name is only mandatory when there's no letterhead — a letterhead
-    # already carries the company name/contact details.
-    if not data.from_company.strip() and not data.letterhead_png:
-        raise QuoteError("Your company name is required (or upload a letterhead).")
+    if not data.from_company.strip():
+        raise QuoteError("Your company name is required.")
     if not data.customer_name.strip():
         raise QuoteError("Customer name is required.")
     if not data.line_items:
@@ -132,18 +131,20 @@ def render_quote_pdf(data: QuoteData) -> bytes:
 
     sym = data.currency_symbol
     margin = 0.7 * inch
-    page_w, page_h = LETTER
-
-    full_page = _letterhead_is_full_page(data.letterhead_png)
-    draw_rect = frame_rect = None
-    if full_page:
-        draw_rect, frame_rect = _full_page_layout(data.letterhead_png, page_w,
-                                                  page_h, margin)
-        content_w = frame_rect[2]
-    else:
-        content_w = page_w - 2 * margin
+    content_w = LETTER[0] - 2 * margin
 
     buf = BytesIO()
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=LETTER,
+        leftMargin=margin,
+        rightMargin=margin,
+        topMargin=margin,
+        bottomMargin=margin,
+        title=f"Quotation {data.quote_number}" if data.quote_number else "Quotation",
+        author=data.from_company,
+    )
+
     base = getSampleStyleSheet()["BodyText"]
 
     def style(name, **kw):
@@ -168,24 +169,22 @@ def render_quote_pdf(data: QuoteData) -> bytes:
 
     story: list = []
 
-    if data.letterhead_png and not full_page:
-        banner = _scaled_image(data.letterhead_png, max_w=content_w, max_h=1.5 * inch)
-        if banner is not None:
-            banner.hAlign = "CENTER"
-            story.append(banner)
-            story.append(Spacer(1, 14))
+    # --- Logo (optional) — a small, fixed-size mark at the chosen corner ----
+    logo_img = _scaled_image(data.logo_png, max_w=1.8 * inch, max_h=0.7 * inch)
+    if logo_img is not None:
+        logo_img.hAlign = {"top_left": "LEFT", "top_center": "CENTER",
+                           "top_right": "RIGHT"}.get(data.logo_position, "LEFT")
+        story.append(logo_img)
+        story.append(Spacer(1, 10))
 
-    # When a letterhead banner is shown, its artwork already carries the
-    # company name/address/email, so we don't repeat them here.
-    left_cell = [Paragraph("QUOTATION", title_st)]
-    if not data.letterhead_png:
-        left_cell.append(Spacer(1, 6))
-        if data.from_company:
-            left_cell.append(Paragraph(data.from_company, company_st))
-        if data.from_address:
-            left_cell.append(Paragraph(data.from_address.replace("\n", "<br/>"), small_st))
-        if data.from_email:
-            left_cell.append(Paragraph(data.from_email, small_st))
+    left_cell = [Paragraph("QUOTATION", title_st), Spacer(1, 6),
+                 Paragraph(data.from_company, company_st)]
+    if data.from_address:
+        left_cell.append(Paragraph(data.from_address.replace("\n", "<br/>"), small_st))
+    if data.from_email:
+        left_cell.append(Paragraph(data.from_email, small_st))
+    if data.from_phone:
+        left_cell.append(Paragraph(data.from_phone, small_st))
 
     meta_rows = []
     if data.quote_number:
@@ -259,9 +258,8 @@ def render_quote_pdf(data: QuoteData) -> bytes:
             _money(sym, li.unit_price),
             _money(sym, li.amount),
         ])
-    items_tbl = Table(rows, colWidths=[content_w * 0.49, content_w * 0.10,
-                                       content_w * 0.205, content_w * 0.205],
-                      repeatRows=1)
+    items_tbl = Table(rows, colWidths=[3.5 * inch, 0.7 * inch, 1.45 * inch,
+                                       1.45 * inch], repeatRows=1)
     items_tbl.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), HEAD_BG),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
@@ -342,12 +340,7 @@ def render_quote_pdf(data: QuoteData) -> bytes:
                            style("footer", fontName="Helvetica", fontSize=9,
                                  leading=12, textColor=MUTED, alignment=1)))
 
-    _build_pdf(
-        buf, story,
-        title=f"Quotation {data.quote_number}" if data.quote_number else "Quotation",
-        author=data.from_company, margin=margin, full_page=full_page,
-        letterhead_png=data.letterhead_png, draw_rect=draw_rect, frame_rect=frame_rect,
-    )
+    doc.build(story)
     return buf.getvalue()
 
 

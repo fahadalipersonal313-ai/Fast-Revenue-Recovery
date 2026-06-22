@@ -63,15 +63,21 @@ PYTHONPATH="D:\revenue-recovery-desk\.venv\Lib\site-packages" \
   - **Premium PDF restyle**: `render_invoice_pdf` switched from the old indigo
     accent (a brand-rule violation) to a neutral charcoal palette
     (`#111827`/`#374151`/`#6b7280`) — deliberately colour-agnostic so it reads as
-    "top-tier corporate" and sits cleanly under any uploaded letterhead.
-  - **Letterhead + e-signature**: `InvoiceData`/`QuoteData` gained optional
-    `letterhead_png` (drawn as a top banner), `signature_png` (bottom-right where
-    the content ends) + `signature_label`. Helper `_scaled_image()` fits images to
-    a box preserving aspect ratio and returns `None` for unreadable bytes, so a bad
-    upload never sinks the PDF. UI: `_render_branding_inputs(prefix, kind)` adds
-    uploaders to the invoice/quote single + bulk generators; bytes live in
-    `st.session_state["{prefix}_letterhead_bytes"]` etc. so they survive the
-    reminder-dialog rerun.
+    "top-tier corporate".
+  - **Logo + e-signature** (superseded an earlier letterhead-banner/full-page
+    design — letterhead quality varies too much across users — clarity, blur,
+    watermarks — to place reliably, so it was replaced with a logo, which is more
+    standardized): `InvoiceData`/`QuoteData` have optional `logo_png` +
+    `logo_position` (`"top_left"`/`"top_center"`/`"top_right"`, drawn as a small
+    fixed-size mark via `Image.hAlign`), `signature_png` (bottom-right where the
+    content ends) + `signature_label`. `from_company` is mandatory; `from_email`/
+    `from_address`/`from_phone` are optional. Helper `_scaled_image()` fits images
+    to a box preserving aspect ratio and returns `None` for unreadable bytes, so a
+    bad upload never sinks the PDF. UI: `_render_branding_inputs(prefix, kind)`
+    adds the logo (+ position selector) and signature uploaders to the invoice/
+    quote single + bulk generators; bytes live in
+    `st.session_state["{prefix}_logo_bytes"]` / `{prefix}_logo_position` etc. so
+    they survive the reminder-dialog rerun.
   - **Quote generator (NEW)**: `src/quote_generator.py` (`QuoteData`,
     `render_quote_pdf`, `to_record` → quote record, reuses invoice `LineItem`/
     `CustomField`/`_money`/`_scaled_image`) + `src/bulk_quote.py` mirroring

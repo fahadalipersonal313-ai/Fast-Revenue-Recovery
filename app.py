@@ -1477,6 +1477,7 @@ _IG_TEXT_DEFAULTS = {
     "ig_from_company": "company_name",     # value pulled from settings attr
     "ig_from_email": "email_address",
     "ig_from_address": "",
+    "ig_from_phone": "",
     "ig_customer_name": "",
     "ig_customer_email": "",
     "ig_customer_address": "",
@@ -1516,7 +1517,7 @@ def _apply_invoice_profile(schema: dict) -> None:
     bump the data-editor version so the line-item table resets to the profile's
     items. Caller reruns afterwards."""
     ss = st.session_state
-    for key in ("ig_from_company", "ig_from_email", "ig_from_address",
+    for key in ("ig_from_company", "ig_from_email", "ig_from_address", "ig_from_phone",
                 "ig_customer_name", "ig_customer_email", "ig_customer_address",
                 "ig_currency", "ig_notes"):
         if key in schema:
@@ -1539,6 +1540,7 @@ def _collect_profile_schema() -> dict:
         "from_company": ss.get("ig_from_company", ""),
         "from_email": ss.get("ig_from_email", ""),
         "from_address": ss.get("ig_from_address", ""),
+        "from_phone": ss.get("ig_from_phone", ""),
         "customer_name": ss.get("ig_customer_name", ""),
         "customer_email": ss.get("ig_customer_email", ""),
         "customer_address": ss.get("ig_customer_address", ""),
@@ -1682,29 +1684,34 @@ def _render_template_download(kind: str) -> None:
                "the manual form.")
 
 
+_LOGO_POSITION_LABELS = {"top_left": "Top left", "top_center": "Top center",
+                         "top_right": "Top right"}
+
+
 def _render_branding_inputs(prefix: str, kind: str) -> None:
-    """Letterhead + e-signature uploaders shared by the invoice/quote generators.
-    Bytes are stored in session_state (``{prefix}_letterhead_bytes`` etc.) so they
+    """Logo + e-signature uploaders shared by the invoice/quote generators.
+    Bytes are stored in session_state (``{prefix}_logo_bytes`` etc.) so they
     survive the reruns the reminder dialog triggers. ``kind`` is for copy only."""
-    with st.expander("🎨 Letterhead & signature (optional)", expanded=False):
-        st.caption("Add your own stationery and signature so every generated "
+    with st.expander("🎨 Logo & signature (optional)", expanded=False):
+        st.caption("Add your logo and signature so every generated "
                    f"{kind} looks like it came straight from your business. "
-                   "Images stay on this device/session and are never sent anywhere. "
-                   "Once a letterhead is loaded, **Your company/email/address below "
-                   "become optional** — that information is already on the artwork.")
-        st.caption("📄 **Upload a full-page letterhead** (a whole A4/Letter page "
-                   "with your header at the top and footer at the bottom) and we "
-                   "print the details into its blank middle area automatically. A "
-                   "short, wide image is placed as a top banner instead.")
+                   "Images stay on this device/session and are never sent anywhere.")
+        st.caption("🖼️ **Upload your company logo** — a small mark placed in the "
+                   "corner you choose. We don't use full letterheads since their "
+                   "quality varies too much (blurry, watermarked, etc.) — a logo is "
+                   "more reliable to place consistently.")
         c1, c2 = st.columns(2)
-        lh = c1.file_uploader("Letterhead image (full page or top banner)",
-                              type=["png", "jpg", "jpeg"], key=f"{prefix}_letterhead_up")
+        lh = c1.file_uploader("Company logo", type=["png", "jpg", "jpeg"],
+                              key=f"{prefix}_logo_up")
         if lh is not None:
-            st.session_state[f"{prefix}_letterhead_bytes"] = lh.getvalue()
-        if st.session_state.get(f"{prefix}_letterhead_bytes"):
-            c1.success("Letterhead loaded ✓")
-            if c1.button("Remove letterhead", key=f"{prefix}_lh_clear"):
-                st.session_state.pop(f"{prefix}_letterhead_bytes", None)
+            st.session_state[f"{prefix}_logo_bytes"] = lh.getvalue()
+        if st.session_state.get(f"{prefix}_logo_bytes"):
+            c1.success("Logo loaded ✓")
+            c1.selectbox("Logo position", list(_LOGO_POSITION_LABELS),
+                        format_func=lambda k: _LOGO_POSITION_LABELS[k],
+                        key=f"{prefix}_logo_position")
+            if c1.button("Remove logo", key=f"{prefix}_lh_clear"):
+                st.session_state.pop(f"{prefix}_logo_bytes", None)
                 st.rerun()
         sig = c2.file_uploader("E-signature image (bottom-right)",
                                type=["png", "jpg", "jpeg"], key=f"{prefix}_signature_up")
@@ -1802,14 +1809,13 @@ def _render_single_invoice() -> None:
     _render_branding_inputs("ig", "invoice")
     _render_custom_field_editor("ig")
 
-    ig_has_letterhead = bool(st.session_state.get("ig_letterhead_bytes"))
     with st.form("invoice_generator_form", clear_on_submit=False):
         ui.section("From")
-        company_suffix = " (optional — on your letterhead)" if ig_has_letterhead else ""
         c1, c2 = st.columns(2)
-        from_company = c1.text_input(f"Your company{company_suffix}", key="ig_from_company")
-        from_email = c2.text_input(f"Your email{company_suffix}", key="ig_from_email")
-        from_address = st.text_area(f"Your address (optional){' — on your letterhead' if ig_has_letterhead else ''}",
+        from_company = c1.text_input("Your company", key="ig_from_company")
+        from_email = c2.text_input("Your email (optional)", key="ig_from_email")
+        from_phone = st.text_input("Your phone (optional)", key="ig_from_phone")
+        from_address = st.text_area("Your address (optional)",
                                     key="ig_from_address", height=70)
 
         ui.section("Bill to")
@@ -1892,6 +1898,7 @@ def _render_single_invoice() -> None:
         from_company=from_company,
         from_email=from_email,
         from_address=from_address,
+        from_phone=from_phone,
         customer_name=customer_name,
         customer_email=customer_email,
         customer_address=customer_address,
@@ -1903,16 +1910,16 @@ def _render_single_invoice() -> None:
         tax_rate_percent=float(tax_rate),
         notes=notes,
         custom_fields=_collect_custom_fields("ig"),
-        letterhead_png=st.session_state.get("ig_letterhead_bytes"),
+        logo_png=st.session_state.get("ig_logo_bytes"),
+        logo_position=st.session_state.get("ig_logo_position", "top_left"),
         signature_png=st.session_state.get("ig_signature_bytes"),
         signature_label=st.session_state.get("ig_signature_label", ""),
     )
 
     # Light pre-validation (the renderer re-checks) so the reminder pop-up only
-    # opens for an invoice we can actually produce. Company name is only
-    # mandatory without a letterhead — the artwork already carries it.
-    if not from_company.strip() and not data.letterhead_png:
-        st.error("Your company name is required (or upload a letterhead above).")
+    # opens for an invoice we can actually produce.
+    if not from_company.strip():
+        st.error("Your company name is required.")
         return
     if not customer_name.strip():
         st.error("Customer name is required.")
@@ -2112,13 +2119,15 @@ def _finalize_bulk(mem, settings, days_after) -> None:
     if p["teach"]:
         mem.learn_aliases("invoice_bulk", mapping)  # Phase 4: detector learns
 
-    # Apply the batch-wide letterhead/signature (if uploaded) to every invoice.
-    lh = st.session_state.get("igbulk_letterhead_bytes")
+    # Apply the batch-wide logo/signature (if uploaded) to every invoice.
+    logo = st.session_state.get("igbulk_logo_bytes")
+    logo_position = st.session_state.get("igbulk_logo_position", "top_left")
     sig = st.session_state.get("igbulk_signature_bytes")
     sig_label = st.session_state.get("igbulk_signature_label", "")
     for r in ready:
         if r.data is not None:
-            r.data.letterhead_png = lh
+            r.data.logo_png = logo
+            r.data.logo_position = logo_position
             r.data.signature_png = sig
             r.data.signature_label = sig_label
 
@@ -2197,6 +2206,7 @@ _QG_TEXT_DEFAULTS = {
     "qg_from_company": "company_name",
     "qg_from_email": "email_address",
     "qg_from_address": "",
+    "qg_from_phone": "",
     "qg_customer_name": "",
     "qg_customer_email": "",
     "qg_currency": "currency_symbol",
@@ -2252,14 +2262,13 @@ def _render_single_quote() -> None:
     _render_branding_inputs("qg", "quote")
     _render_custom_field_editor("qg")
 
-    qg_has_letterhead = bool(st.session_state.get("qg_letterhead_bytes"))
     with st.form("quote_generator_form", clear_on_submit=False):
         ui.section("From")
-        company_suffix = " (optional — on your letterhead)" if qg_has_letterhead else ""
         c1, c2 = st.columns(2)
-        from_company = c1.text_input(f"Your company{company_suffix}", key="qg_from_company")
-        from_email = c2.text_input(f"Your email{company_suffix}", key="qg_from_email")
-        from_address = st.text_area(f"Your address (optional){' — on your letterhead' if qg_has_letterhead else ''}",
+        from_company = c1.text_input("Your company", key="qg_from_company")
+        from_email = c2.text_input("Your email (optional)", key="qg_from_email")
+        from_phone = st.text_input("Your phone (optional)", key="qg_from_phone")
+        from_address = st.text_area("Your address (optional)",
                                     key="qg_from_address", height=70)
 
         ui.section("Quote for")
@@ -2324,8 +2333,8 @@ def _render_single_quote() -> None:
             return
         line_items.append(qg.LineItem(description=desc, quantity=qty, unit_price=price))
 
-    if not from_company.strip() and not st.session_state.get("qg_letterhead_bytes"):
-        st.error("Your company name is required (or upload a letterhead above)."); return
+    if not from_company.strip():
+        st.error("Your company name is required."); return
     if not customer_name.strip():
         st.error("Customer name is required."); return
     if not line_items:
@@ -2333,12 +2342,14 @@ def _render_single_quote() -> None:
 
     data = qg.QuoteData(
         from_company=from_company, from_email=from_email, from_address=from_address,
+        from_phone=from_phone,
         customer_name=customer_name, customer_email=customer_email,
         quote_number=quote_number, quote_date=quote_date, valid_until=valid_until,
         currency_symbol=currency_symbol or "$", line_items=line_items,
         tax_rate_percent=float(tax_rate), notes=notes,
         custom_fields=_collect_custom_fields("qg"),
-        letterhead_png=st.session_state.get("qg_letterhead_bytes"),
+        logo_png=st.session_state.get("qg_logo_bytes"),
+        logo_position=st.session_state.get("qg_logo_position", "top_left"),
         signature_png=st.session_state.get("qg_signature_bytes"),
         signature_label=st.session_state.get("qg_signature_label", ""),
     )
@@ -2472,12 +2483,14 @@ def _render_bulk_quotes() -> None:
                  key="qg_bulk_go", use_container_width=True):
         if teach:
             mem.learn_aliases("quote_bulk", mapping)
-        lh = st.session_state.get("qgbulk_letterhead_bytes")
+        logo = st.session_state.get("qgbulk_logo_bytes")
+        logo_position = st.session_state.get("qgbulk_logo_position", "top_left")
         sig = st.session_state.get("qgbulk_signature_bytes")
         sig_label = st.session_state.get("qgbulk_signature_label", "")
         for r in ready:
             if r.data is not None:
-                r.data.letterhead_png = lh
+                r.data.logo_png = logo
+                r.data.logo_position = logo_position
                 r.data.signature_png = sig
                 r.data.signature_label = sig_label
         rendered = bulk_q.render_all(ready)
