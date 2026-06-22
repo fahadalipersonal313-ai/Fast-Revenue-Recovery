@@ -121,8 +121,11 @@ def _scaled_image(raw: bytes, max_w: float, max_h: float) -> Optional[Image]:
 
 
 def _validate(data: InvoiceData) -> None:
-    if not data.from_company.strip():
-        raise InvoiceError("Your company name is required.")
+    # Company name is only mandatory when there's no letterhead — if one is
+    # uploaded, that artwork already carries the company name/contact details,
+    # so we don't force the user to retype them.
+    if not data.from_company.strip() and not data.letterhead_png:
+        raise InvoiceError("Your company name is required (or upload a letterhead).")
     if not data.customer_name.strip():
         raise InvoiceError("Customer name is required.")
     if not data.line_items:
@@ -213,12 +216,17 @@ def render_invoice_pdf(data: InvoiceData) -> bytes:
             story.append(Spacer(1, 14))
 
     # --- Header: title + issuer (left) | invoice meta (right), even edges ----
-    left_cell = [Paragraph("INVOICE", title_st), Spacer(1, 6),
-                 Paragraph(data.from_company, company_st)]
-    if data.from_address:
-        left_cell.append(Paragraph(data.from_address.replace("\n", "<br/>"), small_st))
-    if data.from_email:
-        left_cell.append(Paragraph(data.from_email, small_st))
+    # When a letterhead banner is shown, its artwork already carries the
+    # company name/address/email, so we don't repeat them here.
+    left_cell = [Paragraph("INVOICE", title_st)]
+    if not data.letterhead_png:
+        left_cell.append(Spacer(1, 6))
+        if data.from_company:
+            left_cell.append(Paragraph(data.from_company, company_st))
+        if data.from_address:
+            left_cell.append(Paragraph(data.from_address.replace("\n", "<br/>"), small_st))
+        if data.from_email:
+            left_cell.append(Paragraph(data.from_email, small_st))
 
     meta_rows = []
     if data.invoice_number:

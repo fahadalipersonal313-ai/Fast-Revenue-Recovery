@@ -62,6 +62,16 @@ def test_quote_renders_with_branding_and_custom_fields():
     assert qg.render_quote_pdf(data)[:5] == b"%PDF-"
 
 
+def test_quote_company_optional_with_letterhead():
+    data = _quote(from_company="", letterhead_png=_png())
+    assert qg.render_quote_pdf(data)[:5] == b"%PDF-"
+
+
+def test_quote_company_still_required_without_letterhead():
+    with pytest.raises(qg.QuoteError):
+        qg.render_quote_pdf(_quote(from_company=""))
+
+
 def test_suggest_filename_is_safe():
     assert qg.suggest_filename(_quote(customer_name="A/B Co", quote_number="Q 9")) \
         == "quote_A_B_Co_Q_9.pdf"
@@ -81,6 +91,20 @@ def test_invoice_renders_custom_fields():
                           custom_fields=[ig.CustomField("PO", "PO-1"),
                                          ig.CustomField("", "ignored")])
     assert ig.render_invoice_pdf(data)[:5] == b"%PDF-"
+
+
+def test_invoice_company_optional_with_letterhead():
+    data = ig.InvoiceData(from_company="", customer_name="Cust",
+                          line_items=[ig.LineItem("x", 1, 10.0)],
+                          letterhead_png=_png())
+    assert ig.render_invoice_pdf(data)[:5] == b"%PDF-"
+
+
+def test_invoice_company_still_required_without_letterhead():
+    data = ig.InvoiceData(from_company="", customer_name="Cust",
+                          line_items=[ig.LineItem("x", 1, 10.0)])
+    with pytest.raises(ig.InvoiceError):
+        ig.render_invoice_pdf(data)
 
 
 # --- bulk quote ------------------------------------------------------------

@@ -1689,7 +1689,9 @@ def _render_branding_inputs(prefix: str, kind: str) -> None:
     with st.expander("🎨 Letterhead & signature (optional)", expanded=False):
         st.caption("Add your own stationery and signature so every generated "
                    f"{kind} looks like it came straight from your business. "
-                   "Images stay on this device/session and are never sent anywhere.")
+                   "Images stay on this device/session and are never sent anywhere. "
+                   "Once a letterhead is loaded, **Your company/email/address below "
+                   "become optional** — that information is already on the artwork.")
         c1, c2 = st.columns(2)
         lh = c1.file_uploader("Blank letterhead image (top banner)",
                               type=["png", "jpg", "jpeg"], key=f"{prefix}_letterhead_up")
@@ -1796,13 +1798,15 @@ def _render_single_invoice() -> None:
     _render_branding_inputs("ig", "invoice")
     _render_custom_field_editor("ig")
 
+    ig_has_letterhead = bool(st.session_state.get("ig_letterhead_bytes"))
     with st.form("invoice_generator_form", clear_on_submit=False):
         ui.section("From")
+        company_suffix = " (optional — on your letterhead)" if ig_has_letterhead else ""
         c1, c2 = st.columns(2)
-        from_company = c1.text_input("Your company", key="ig_from_company")
-        from_email = c2.text_input("Your email", key="ig_from_email")
-        from_address = st.text_area("Your address (optional)", key="ig_from_address",
-                                    height=70)
+        from_company = c1.text_input(f"Your company{company_suffix}", key="ig_from_company")
+        from_email = c2.text_input(f"Your email{company_suffix}", key="ig_from_email")
+        from_address = st.text_area(f"Your address (optional){' — on your letterhead' if ig_has_letterhead else ''}",
+                                    key="ig_from_address", height=70)
 
         ui.section("Bill to")
         c1, c2 = st.columns(2)
@@ -1901,9 +1905,10 @@ def _render_single_invoice() -> None:
     )
 
     # Light pre-validation (the renderer re-checks) so the reminder pop-up only
-    # opens for an invoice we can actually produce.
-    if not from_company.strip():
-        st.error("Your company name is required.")
+    # opens for an invoice we can actually produce. Company name is only
+    # mandatory without a letterhead — the artwork already carries it.
+    if not from_company.strip() and not data.letterhead_png:
+        st.error("Your company name is required (or upload a letterhead above).")
         return
     if not customer_name.strip():
         st.error("Customer name is required.")
@@ -2243,13 +2248,15 @@ def _render_single_quote() -> None:
     _render_branding_inputs("qg", "quote")
     _render_custom_field_editor("qg")
 
+    qg_has_letterhead = bool(st.session_state.get("qg_letterhead_bytes"))
     with st.form("quote_generator_form", clear_on_submit=False):
         ui.section("From")
+        company_suffix = " (optional — on your letterhead)" if qg_has_letterhead else ""
         c1, c2 = st.columns(2)
-        from_company = c1.text_input("Your company", key="qg_from_company")
-        from_email = c2.text_input("Your email", key="qg_from_email")
-        from_address = st.text_area("Your address (optional)", key="qg_from_address",
-                                    height=70)
+        from_company = c1.text_input(f"Your company{company_suffix}", key="qg_from_company")
+        from_email = c2.text_input(f"Your email{company_suffix}", key="qg_from_email")
+        from_address = st.text_area(f"Your address (optional){' — on your letterhead' if qg_has_letterhead else ''}",
+                                    key="qg_from_address", height=70)
 
         ui.section("Quote for")
         c1, c2 = st.columns(2)
@@ -2313,8 +2320,8 @@ def _render_single_quote() -> None:
             return
         line_items.append(qg.LineItem(description=desc, quantity=qty, unit_price=price))
 
-    if not from_company.strip():
-        st.error("Your company name is required."); return
+    if not from_company.strip() and not st.session_state.get("qg_letterhead_bytes"):
+        st.error("Your company name is required (or upload a letterhead above)."); return
     if not customer_name.strip():
         st.error("Customer name is required."); return
     if not line_items:

@@ -86,8 +86,10 @@ class QuoteData:
 
 
 def _validate(data: QuoteData) -> None:
-    if not data.from_company.strip():
-        raise QuoteError("Your company name is required.")
+    # Company name is only mandatory when there's no letterhead — a letterhead
+    # already carries the company name/contact details.
+    if not data.from_company.strip() and not data.letterhead_png:
+        raise QuoteError("Your company name is required (or upload a letterhead).")
     if not data.customer_name.strip():
         raise QuoteError("Customer name is required.")
     if not data.line_items:
@@ -173,12 +175,17 @@ def render_quote_pdf(data: QuoteData) -> bytes:
             story.append(banner)
             story.append(Spacer(1, 14))
 
-    left_cell = [Paragraph("QUOTATION", title_st), Spacer(1, 6),
-                 Paragraph(data.from_company, company_st)]
-    if data.from_address:
-        left_cell.append(Paragraph(data.from_address.replace("\n", "<br/>"), small_st))
-    if data.from_email:
-        left_cell.append(Paragraph(data.from_email, small_st))
+    # When a letterhead banner is shown, its artwork already carries the
+    # company name/address/email, so we don't repeat them here.
+    left_cell = [Paragraph("QUOTATION", title_st)]
+    if not data.letterhead_png:
+        left_cell.append(Spacer(1, 6))
+        if data.from_company:
+            left_cell.append(Paragraph(data.from_company, company_st))
+        if data.from_address:
+            left_cell.append(Paragraph(data.from_address.replace("\n", "<br/>"), small_st))
+        if data.from_email:
+            left_cell.append(Paragraph(data.from_email, small_st))
 
     meta_rows = []
     if data.quote_number:
