@@ -1680,15 +1680,35 @@ def _render_bulk_invoices() -> None:
                "tax) is applied automatically, and any row whose invoice number you "
                "already created by hand is **skipped** — never overwritten.")
 
-    uploaded = st.file_uploader("Invoice spreadsheet (CSV or Excel)",
-                                type=["csv", "xlsx", "xls"], key="ig_bulk_file")
-    if uploaded is None:
+    col_u, col_s = st.columns([2, 1])
+    with col_u:
+        uploaded = st.file_uploader("Invoice spreadsheet (CSV or Excel)",
+                                    type=["csv", "xlsx", "xls"], key="ig_bulk_file")
+    with col_s:
+        st.markdown("**🎁 No file handy?**")
+        if st.button("✨ Load matching sample", key="ig_bulk_load_sample"):
+            from sample_data.generate_samples import generate_all
+            from src.config import SAMPLE_DIR
+            path = SAMPLE_DIR / "sample_bulk_invoices.xlsx"
+            if not path.exists():
+                generate_all()
+            st.session_state.ig_bulk_sample_bytes = path.read_bytes()
+            st.session_state.ig_bulk_sample_name = path.name
+            st.toast(f"Loaded sample {path.name}", icon="✨")
+
+    if uploaded is not None:
+        data, fname = uploaded.getvalue(), uploaded.name
+        st.session_state.pop("ig_bulk_sample_bytes", None)
+    elif st.session_state.get("ig_bulk_sample_bytes"):
+        data = st.session_state["ig_bulk_sample_bytes"]
+        fname = st.session_state.get("ig_bulk_sample_name", "sample_bulk_invoices.xlsx")
+    else:
         st.info("No file yet. Each row needs at least a **customer name** and an "
                 "**amount**; an invoice number and due date are recommended.")
         return
 
     try:
-        df, meta = ingest.read_table(uploaded.getvalue(), uploaded.name)
+        df, meta = ingest.read_table(data, fname)
     except Exception as exc:  # noqa: BLE001
         st.error(f"Could not read the file: {exc}")
         return

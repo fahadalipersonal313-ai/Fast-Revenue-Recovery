@@ -115,16 +115,44 @@ def build_leads() -> pd.DataFrame:
     return pd.DataFrame(rows, columns=cols)
 
 
+def build_bulk_invoices() -> pd.DataFrame:
+    # Note: non-standard headers ("Bill To", "Inv #", "Net Due") on purpose, to
+    # exercise the invoice_bulk column mapper/auto-detect just like the others.
+    rows = [
+        ["Acme Corp", "Acme Corporation Ltd", "Priya Shah", "priya@acme.example",
+         "+1 (555) 010-2020", "12 Market St, Springfield", "BLK-3001", 1450.00,
+         d(2), d_future(28), "Website redesign — phase 1"],
+        ["Bright Studios", "Bright Studios LLC", "Tom Walsh", "tom@brightstudios.example",
+         "555.010.3030", "88 Loft Ave, Riverside", "BLK-3002", 620.00,
+         d(0), d_future(14), "Headshot photography session"],
+        ["", "Cedar & Co", "Maria Lopez", "billing@cedarco.example",
+         "+1-555-010-4040", "200 Pine Rd, Lakeview", "BLK-3003", 3980.00,
+         d(1), d_future(30), "Quarterly bookkeeping retainer"],
+        ["Delta Logistics", "", "", "ap@delta-logistics.example",
+         "", "9 Harbor Way, Port City", "BLK-3004", "$2,150.00",
+         d(3), d_future(21), "Freight consulting — March"],
+        ["Echo Retail", "Echo Retail Group", "Jamie Fox", "jamie[at]echoretail.example",
+         "555 010 5050", "", "BLK-3005", 875.50,
+         "", d_future(7), "POS system setup"],
+    ]
+    cols = ["Customer Name", "Bill To", "Contact Person", "Email", "Mobile",
+            "Address", "Inv #", "Net Due", "Invoice Date", "Due Date",
+            "Description"]
+    return pd.DataFrame(rows, columns=cols)
+
+
 def generate_all(out_dir: Path = OUT_DIR) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
     paths = {
         "invoices": out_dir / "sample_invoices.xlsx",
         "quotes": out_dir / "sample_quotes.xlsx",
         "leads": out_dir / "sample_leads.xlsx",
+        "bulk_invoices": out_dir / "sample_bulk_invoices.xlsx",
     }
     build_invoices().to_excel(paths["invoices"], index=False)
     build_quotes().to_excel(paths["quotes"], index=False)
     build_leads().to_excel(paths["leads"], index=False)
+    build_bulk_invoices().to_excel(paths["bulk_invoices"], index=False)
     return paths
 
 
