@@ -97,6 +97,24 @@ PYTHONPATH="D:\revenue-recovery-desk\.venv\Lib\site-packages" \
   - **Guided tour step 4**: added a Settings stop explaining how to connect email
     so approved follow-ups save to the Gmail/IMAP Drafts folder.
   - 16 new tests in `tests/test_quote_and_templates.py`; full suite 164 passing.
+- **Letterhead → logo replacement** (2026-06-22/23): dropped the full-page
+  letterhead detection subsystem entirely (letterhead quality varies too much
+  across users — blur/watermarks/resolution — to auto-detect a blank area
+  reliably). Replaced with a small fixed-size **logo** + `logo_position`
+  (`top_left`/`top_center`/`top_right`) on `InvoiceData`/`QuoteData`.
+  `from_company` is mandatory again; `from_address`/`from_email`/`from_phone`
+  (new field) stay optional. Both generators are back to plain
+  `SimpleDocTemplate` (no `BaseDocTemplate`/`Frame`/`PageTemplate`). UI session
+  keys renamed `{prefix}_letterhead_bytes` → `{prefix}_logo_bytes` +
+  `{prefix}_logo_position`. Full suite 174 passing.
+  - **Deploy gotcha**: after pushing this kind of dataclass-field rename, a
+    `TypeError` on `ig.InvoiceData(...)`/`qg.QuoteData(...)` construction in
+    the deployed Streamlit Cloud app (but not locally) means the running
+    process has a **stale cached `invoice_generator`/`quote_generator`
+    module** from before the rename — `app.py`'s source reloads but the
+    already-imported module doesn't. Fix: Streamlit Cloud → **Manage app** →
+    **⋮ → Clear cache**, then **⋮ → Reboot app** (a plain rerun isn't enough,
+    it needs a process restart).
 - Fixed logout button visibility (moved to top of sidebar, full-width).
 - **UI redesign → premium SaaS look** (`src/ui.py` rewritten, `app.py` restyled):
   dark slate nav rail, single indigo accent (`#4f46e5`), flat buttons, clean KPI
