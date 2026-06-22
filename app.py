@@ -226,6 +226,35 @@ def _records_from_df(df: pd.DataFrame, mapping: dict, status_map: dict | None = 
     return cleaned
 
 
+def _run_one_click_demo() -> tuple[int, int | None]:
+    """Loads the sample invoice file, auto-maps it, and analyzes it — so a new
+    user reaches a finished, drafted follow-up message in one click instead of
+    walking through Upload Center by hand. Returns (recommendation_count,
+    id_of_a_normal_customer-ready_item_to_highlight_in_the_queue)."""
+    mem = get_memory()
+    settings = get_settings()
+    from sample_data.generate_samples import generate_all
+    from src.config import SAMPLE_DIR
+    path = SAMPLE_DIR / "sample_invoices.xlsx"
+    if not path.exists():
+        generate_all()
+    df, _ = ingest.read_table(path.read_bytes(), path.name)
+    learned = mem.learned_aliases("invoice")
+    mapping, _ = cm.detect_mapping(list(df.columns), "invoice", learned=learned)
+    raw_vals = sorted({str(v).strip() for v in df[mapping["payment_status"]].dropna().unique()
+                       if str(v).strip()})
+    status_map = cm.suggest_status_map(raw_vals, "invoice")
+    records = _records_from_df(df, mapping, status_map, "invoice")
+    plan = analyze_and_queue(mem, settings, {"invoice": records})
+    items = list_queue(mem, "pending")
+    # Prefer a normal customer-facing draft over an "internal review only"
+    # placeholder (high-value invoices are deliberately held for human
+    # judgment) so the first thing a new user sees is the actual payoff.
+    highlight = next((it["id"] for it in items
+                      if not (it["suggested_message"] or "").startswith("INTERNAL DRAFT")), None)
+    return len(plan), highlight
+
+
 # ---------------------------------------------------------------------------
 # Pages
 # ---------------------------------------------------------------------------
@@ -265,6 +294,21 @@ def page_welcome() -> None:
         """,
         unsafe_allow_html=True,
     )
+
+    # --- One-click guided demo ---------------------------------------------
+    dc1, dc2, dc3 = st.columns([1, 2, 1])
+    with dc2:
+        if st.button("▶️  See it work in 30 seconds (no setup needed)",
+                     type="primary", use_container_width=True, key="welc_demo"):
+            count, highlight = _run_one_click_demo()
+            st.session_state["demo_highlight_id"] = highlight
+            st.session_state["demo_banner"] = count
+            _goto("✅ Approvals")
+        st.caption(
+            "Loads 5 realistic sample invoices and shows you a finished, "
+            "ready-to-send follow-up message — nothing is sent, and nothing "
+            "you do here touches a real customer.",
+        )
 
     # --- Section 1: What this app can do ----------------------------------
     st.markdown("<div class='rrd-wsec'><div class='rrd-wsec-num'>1</div>"
@@ -468,7 +512,13 @@ def page_dashboard() -> None:
             "Load a one-click sample to explore the app with realistic data.",
             icon="📂",
         )
-        if st.button("Open Upload Center", type="primary"):
+        dcol1, dcol2 = st.columns(2)
+        if dcol1.button("▶️ See it work in 30 seconds", type="primary", use_container_width=True):
+            count, highlight = _run_one_click_demo()
+            st.session_state["demo_highlight_id"] = highlight
+            st.session_state["demo_banner"] = count
+            _goto("✅ Approvals")
+        if dcol2.button("Open Upload Center", use_container_width=True):
             _goto("📤 Upload")
         return
 
@@ -891,6 +941,16 @@ def page_approvals() -> None:
     if draft_failed_reason:
         st.warning(f"📧 Could not save the email draft: {draft_failed_reason}")
 
+    demo_count = st.session_state.pop("demo_banner", None)
+    highlight_id = st.session_state.pop("demo_highlight_id", None)
+    if demo_count is not None:
+        st.success(
+            f"🎬 **Demo loaded** — {demo_count} recommendation(s) from 5 sample invoices "
+            "(Acme Corp, Bright Studios, Cedar & Co...). The item below is opened for you "
+            "as an example — try editing it, then **Approve**. Items marked 🔒 are high-value "
+            "and deliberately held for your judgment instead of an auto-draft."
+        )
+
     s = analytics.stats(mem)
     st.caption(f"{s['handled']} of {s['total_items'] or 0} recommendations handled.")
 
@@ -903,7 +963,9 @@ def page_approvals() -> None:
     for item in items:
         pr = (item["priority"] or "none").lower()
         title = f"{ui.PRIORITY_EMOJI.get(pr,'⚪')} {item['customer_name']} · {money(item['amount'])} · {item['record_type']}"
-        with st.expander(title, expanded=(status_filter == "pending" and item is items[0])):
+        is_default_open = (item["id"] == highlight_id if highlight_id is not None
+                           else (status_filter == "pending" and item is items[0]))
+        with st.expander(title, expanded=is_default_open):
             st.markdown(ui.priority_chip(pr), unsafe_allow_html=True)
             st.write(f"**Reference:** {item['reference'] or '—'}")
             st.write(f"**Why:** {item['reason']}")
