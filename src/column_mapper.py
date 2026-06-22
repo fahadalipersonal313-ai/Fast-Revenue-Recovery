@@ -80,11 +80,29 @@ BULK_INVOICE_FIELDS: Dict[str, List[str]] = {
                     "particulars", "work done", "narrative"],
 }
 
+# Bulk quote *generation* (Quote Generator → "Bulk from file" tab). Mirrors the
+# bulk-invoice set but carries quote identifiers/dates instead of invoice ones.
+BULK_QUOTE_FIELDS: Dict[str, List[str]] = {
+    "customer_name": QUOTE_FIELDS["client_name"],
+    "company_name": BULK_INVOICE_FIELDS["company_name"],
+    "contact_person": BULK_INVOICE_FIELDS["contact_person"],
+    "email": QUOTE_FIELDS["email"],
+    "mobile_number": BULK_INVOICE_FIELDS["mobile_number"],
+    "address": BULK_INVOICE_FIELDS["address"],
+    "quote_number": QUOTE_FIELDS["quote_number"],
+    "amount_due": QUOTE_FIELDS["quote_amount"],
+    "quote_date": QUOTE_FIELDS["quote_date"],
+    "valid_until": ["valid until", "valid till", "expiry", "expiry date",
+                    "expires", "valid to", "quote valid until"],
+    "description": BULK_INVOICE_FIELDS["description"],
+}
+
 FIELD_SETS = {
     "invoice": INVOICE_FIELDS,
     "quote": QUOTE_FIELDS,
     "lead": LEAD_FIELDS,
     "invoice_bulk": BULK_INVOICE_FIELDS,
+    "quote_bulk": BULK_QUOTE_FIELDS,
 }
 
 # Fields that the agents genuinely need to function.

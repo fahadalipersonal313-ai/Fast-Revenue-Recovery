@@ -199,6 +199,67 @@ def _extract_json(raw: str) -> Optional[dict]:
         return None
 
 
+_CUSTOM_FIELDS_SYSTEM_PROMPT = (
+    "You tidy up user-entered extra fields for a business invoice or quotation. "
+    "For each field you are given a label and a value. Return the SAME fields in "
+    "the SAME order, lightly cleaned for a professional document: fix casing and "
+    "spacing on the label (e.g. 'po number' -> 'PO Number', 'vat id' -> 'VAT ID') "
+    "and trim the value. NEVER invent, drop, reorder, merge or split fields, and "
+    "NEVER change the meaning or the numbers/IDs inside a value. Respond with ONLY "
+    'a JSON array of {"label": "...", "value": "..."} objects and nothing else.'
+)
+
+
+def analyze_custom_fields(
+    settings: Settings, pairs: List[tuple]
+) -> Optional[List[tuple]]:
+    """Lightly professionalise user-added custom ``(label, value)`` fields.
+
+    AI only fixes label casing/spacing and trims values — it never changes a
+    value's meaning, count or order. Returns a same-length list of cleaned
+    ``(label, value)`` tuples, or ``None`` to fall back to the raw input. Any
+    malformed/short/mismatched response is rejected so a generated document is
+    never silently corrupted.
+    """
+    if not ai_available(settings) or not pairs:
+        return None
+    payload = [{"label": str(l), "value": str(v)} for l, v in pairs]
+    prompt = "Fields to clean:\n" + json.dumps(payload)
+    raw = _complete(_CUSTOM_FIELDS_SYSTEM_PROMPT, prompt, settings, max_tokens=600)
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+    except Exception:
+        match = re.search(r"\[.*\]", raw, re.DOTALL)
+        if not match:
+            return None
+        try:
+            data = json.loads(match.group(0))
+        except Exception:
+            return None
+    if not isinstance(data, list) or len(data) != len(pairs):
+        return None
+    out: List[tuple] = []
+    for orig, item in zip(pairs, data):
+        if not isinstance(item, dict):
+            return None
+        label = str(item.get("label") or "").strip()
+        value = str(item.get("value") or "").strip()
+        # Guard: AI must not blank a field or mangle the value's meaning. If the
+        # value's digits changed, distrust the whole response and fall back.
+        if not label or not value:
+            return None
+        if _digits(value) != _digits(str(orig[1])):
+            return None
+        out.append((label, value))
+    return out
+
+
+def _digits(text: str) -> str:
+    return "".join(ch for ch in text if ch.isdigit())
+
+
 def message_tone_variants(text: str, settings: Settings) -> Optional[Dict[str, str]]:
     """Return {tone: rewritten_message} for gentle/neutral/firm, or None on failure.
 

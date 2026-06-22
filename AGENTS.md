@@ -58,6 +58,39 @@ PYTHONPATH="D:\revenue-recovery-desk\.venv\Lib\site-packages" \
 - Don't reintroduce gamification (scores, badges, balloons, 3D candy buttons).
 
 ## Recent work (2026-06)
+- **Document generation overhaul** (2026-06-22): five linked upgrades to invoice/
+  quote generation.
+  - **Premium PDF restyle**: `render_invoice_pdf` switched from the old indigo
+    accent (a brand-rule violation) to a neutral charcoal palette
+    (`#111827`/`#374151`/`#6b7280`) — deliberately colour-agnostic so it reads as
+    "top-tier corporate" and sits cleanly under any uploaded letterhead.
+  - **Letterhead + e-signature**: `InvoiceData`/`QuoteData` gained optional
+    `letterhead_png` (drawn as a top banner), `signature_png` (bottom-right where
+    the content ends) + `signature_label`. Helper `_scaled_image()` fits images to
+    a box preserving aspect ratio and returns `None` for unreadable bytes, so a bad
+    upload never sinks the PDF. UI: `_render_branding_inputs(prefix, kind)` adds
+    uploaders to the invoice/quote single + bulk generators; bytes live in
+    `st.session_state["{prefix}_letterhead_bytes"]` etc. so they survive the
+    reminder-dialog rerun.
+  - **Quote generator (NEW)**: `src/quote_generator.py` (`QuoteData`,
+    `render_quote_pdf`, `to_record` → quote record, reuses invoice `LineItem`/
+    `CustomField`/`_money`/`_scaled_image`) + `src/bulk_quote.py` mirroring
+    `bulk_invoice.py`. Wired into a new "🧮 Generate" tab on the Quotes page
+    (`_render_single_quote` / `_render_bulk_quotes`). Generated quotes optionally
+    enter the normal quote-recovery pipeline via `analyze_and_queue`.
+  - **Standardized templates**: `src/templates.py` builds downloadable `.xlsx`
+    templates whose headers map 1:1 onto `BULK_INVOICE_FIELDS` / new
+    `BULK_QUOTE_FIELDS` (so an unedited template auto-detects every column — tested).
+    Download buttons via `_render_template_download(kind)`.
+  - **Custom "+" fields + AI analysis**: `_render_custom_field_editor` is a
+    dynamic-row data_editor (the "+" adds rows); values become `CustomField`s shown
+    in an "Additional details" grid on the PDF. When AI is on,
+    `ai_helper.analyze_custom_fields` lightly cleans label casing/spacing — with a
+    hard guard that **rejects the whole response if a value's digits change**, so a
+    PO/VAT number can never be silently mangled. Fails safe to raw text otherwise.
+  - **Guided tour step 4**: added a Settings stop explaining how to connect email
+    so approved follow-ups save to the Gmail/IMAP Drafts folder.
+  - 16 new tests in `tests/test_quote_and_templates.py`; full suite 164 passing.
 - Fixed logout button visibility (moved to top of sidebar, full-width).
 - **UI redesign → premium SaaS look** (`src/ui.py` rewritten, `app.py` restyled):
   dark slate nav rail, single indigo accent (`#4f46e5`), flat buttons, clean KPI

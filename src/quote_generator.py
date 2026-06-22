@@ -1,16 +1,18 @@
-"""Manual invoice PDF generator — Phase 1.
+"""Manual + bulk quotation PDF generator.
 
-Pure function: a typed dict of invoice fields in, PDF bytes out. No Streamlit,
-no DB, no I/O. The Streamlit page (``app.py``) handles form input and draft
-saving; everything testable lives here.
+Mirrors :mod:`invoice_generator` exactly — pure functions, deterministic, no
+Streamlit/DB/network — but produces a *quotation* instead of an invoice:
 
-Design rules (mirroring ``ai_helper`` / ``email_draft``):
+* Title reads "QUOTATION".
+* The right-hand meta block shows Quote #, Quote date and a "Valid until" date
+  (instead of an issue/due date pair).
+* :func:`to_record` projects the quote into the canonical *quote record* dict
+  the quote-recovery pipeline (quote agent → daily plan → approval queue)
+  consumes, so a generated quote can immediately be tracked for follow-up.
 
-* Deterministic — given the same input, the produced PDF has the same content.
-* No network, no filesystem writes.
-* Validation rejects nonsense input (negative quantities, missing customer,
-  empty line items) by raising ``InvoiceError``. The caller surfaces the
-  message; nothing here ever crashes Streamlit.
+The :class:`LineItem`, :class:`CustomField` dataclasses and the premium
+neutral-charcoal styling are shared with :mod:`invoice_generator` so the two
+documents never drift apart visually.
 """
 
 from __future__ import annotations
@@ -18,16 +20,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date
 from io import BytesIO
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import LETTER
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
-from reportlab.lib.utils import ImageReader
 from reportlab.platypus import (
     HRFlowable,
-    Image,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
@@ -35,35 +35,23 @@ from reportlab.platypus import (
     TableStyle,
 )
 
+# Reuse the invoice building blocks so the two generators stay in lock-step.
+from src.invoice_generator import (  # noqa: F401  (re-exported for callers)
+    CustomField,
+    InvoiceError,
+    LineItem,
+    _money,
+    _scaled_image,
+)
 
-class InvoiceError(ValueError):
-    """Raised when the caller-supplied invoice data is invalid."""
 
-
-@dataclass
-class LineItem:
-    description: str
-    quantity: float
-    unit_price: float
-
-    @property
-    def amount(self) -> float:
-        return round(self.quantity * self.unit_price, 2)
+class QuoteError(InvoiceError):
+    """Raised when the caller-supplied quote data is invalid."""
 
 
 @dataclass
-class CustomField:
-    """A user-added ``label: value`` detail (from the manual generator's
-    "+ add field" button). Rendered in an "Additional details" grid — never
-    used in any money/date computation."""
-
-    label: str
-    value: str
-
-
-@dataclass
-class InvoiceData:
-    """Everything the renderer needs to draw one invoice."""
+class QuoteData:
+    """Everything the renderer needs to draw one quotation."""
 
     # Issuer (your company)
     from_company: str
@@ -76,97 +64,71 @@ class InvoiceData:
     customer_address: str = ""
 
     # Identifiers + dates
-    invoice_number: str = ""
-    issue_date: Optional[date] = None
-    due_date: Optional[date] = None
+    quote_number: str = ""
+    quote_date: Optional[date] = None
+    valid_until: Optional[date] = None
 
     # Money
     currency_symbol: str = "$"
     line_items: List[LineItem] = field(default_factory=list)
-    tax_rate_percent: float = 0.0  # e.g. 8.5 means 8.5%
+    tax_rate_percent: float = 0.0
 
     # Free-form
     notes: str = ""
 
-    # User-added extra fields (label/value), shown in an "Additional details" grid.
+    # User-added extra fields, shown in an "Additional details" grid.
     custom_fields: List[CustomField] = field(default_factory=list)
 
-    # Branding images (raw bytes, PNG/JPG). Letterhead is drawn as a top banner;
-    # the signature sits bottom-right where the invoice content ends. Both are
-    # optional and never required for a valid invoice.
+    # Branding images (raw bytes, PNG/JPG).
     letterhead_png: Optional[bytes] = None
     signature_png: Optional[bytes] = None
     signature_label: str = ""
 
 
-def _money(symbol: str, amount: float) -> str:
-    return f"{symbol}{amount:,.2f}"
-
-
-def _scaled_image(raw: bytes, max_w: float, max_h: float) -> Optional[Image]:
-    """Build a reportlab Image from raw bytes, scaled to fit within
-    ``max_w`` x ``max_h`` while preserving aspect ratio. Returns ``None`` if the
-    bytes aren't a readable image, so a bad upload never sinks the PDF."""
-    if not raw:
-        return None
-    try:
-        reader = ImageReader(BytesIO(raw))
-        iw, ih = reader.getSize()
-        if not iw or not ih:
-            return None
-    except Exception:  # noqa: BLE001 — unreadable image is non-fatal
-        return None
-    scale = min(max_w / iw, max_h / ih)
-    return Image(BytesIO(raw), width=iw * scale, height=ih * scale)
-
-
-def _validate(data: InvoiceData) -> None:
+def _validate(data: QuoteData) -> None:
     if not data.from_company.strip():
-        raise InvoiceError("Your company name is required.")
+        raise QuoteError("Your company name is required.")
     if not data.customer_name.strip():
-        raise InvoiceError("Customer name is required.")
+        raise QuoteError("Customer name is required.")
     if not data.line_items:
-        raise InvoiceError("At least one line item is required.")
+        raise QuoteError("At least one line item is required.")
     if data.tax_rate_percent < 0:
-        raise InvoiceError("Tax rate cannot be negative.")
+        raise QuoteError("Tax rate cannot be negative.")
     for i, item in enumerate(data.line_items, start=1):
         if not item.description.strip():
-            raise InvoiceError(f"Line item {i}: description is required.")
+            raise QuoteError(f"Line item {i}: description is required.")
         if item.quantity <= 0:
-            raise InvoiceError(f"Line item {i}: quantity must be > 0.")
+            raise QuoteError(f"Line item {i}: quantity must be > 0.")
         if item.unit_price < 0:
-            raise InvoiceError(f"Line item {i}: unit price cannot be negative.")
+            raise QuoteError(f"Line item {i}: unit price cannot be negative.")
 
 
-def compute_totals(data: InvoiceData) -> dict:
+def compute_totals(data: QuoteData) -> dict:
     """Return subtotal/tax/total. Pure arithmetic — no PDF involved."""
     subtotal = round(sum(li.amount for li in data.line_items), 2)
     tax = round(subtotal * (data.tax_rate_percent / 100.0), 2)
     return {"subtotal": subtotal, "tax": tax, "total": round(subtotal + tax, 2)}
 
 
-def render_invoice_pdf(data: InvoiceData) -> bytes:
-    """Render ``data`` as a PDF and return the raw bytes.
+def render_quote_pdf(data: QuoteData) -> bytes:
+    """Render ``data`` as a quotation PDF and return the raw bytes.
 
-    Raises ``InvoiceError`` if the input is invalid. Never writes to disk.
+    Raises ``QuoteError`` if the input is invalid. Never writes to disk.
     """
     _validate(data)
     totals = compute_totals(data)
 
-    # Palette — premium, neutral charcoal. Deliberately colour-agnostic so it
-    # sits cleanly under any uploaded letterhead and reads as "top-tier corporate"
-    # rather than branded. (No indigo/blue — that violated the app's brand rule.)
-    INK = colors.HexColor("#111827")     # gray-900 — headings/values
-    BODY = colors.HexColor("#374151")    # gray-700 — body text
-    MUTED = colors.HexColor("#6b7280")   # gray-500 — labels / secondary
-    ACCENT = colors.HexColor("#111827")  # charcoal accent (rules, total bar)
+    INK = colors.HexColor("#111827")
+    BODY = colors.HexColor("#374151")
+    MUTED = colors.HexColor("#6b7280")
+    ACCENT = colors.HexColor("#111827")
     HAIRLINE = colors.HexColor("#e5e7eb")
     ZEBRA = colors.HexColor("#f9fafb")
     HEAD_BG = colors.HexColor("#111827")
 
     sym = data.currency_symbol
     margin = 0.7 * inch
-    content_w = LETTER[0] - 2 * margin  # 7.1" on LETTER
+    content_w = LETTER[0] - 2 * margin
 
     buf = BytesIO()
     doc = SimpleDocTemplate(
@@ -176,7 +138,7 @@ def render_invoice_pdf(data: InvoiceData) -> bytes:
         rightMargin=margin,
         topMargin=margin,
         bottomMargin=margin,
-        title=f"Invoice {data.invoice_number}" if data.invoice_number else "Invoice",
+        title=f"Quotation {data.quote_number}" if data.quote_number else "Quotation",
         author=data.from_company,
     )
 
@@ -194,9 +156,9 @@ def render_invoice_pdf(data: InvoiceData) -> bytes:
     label_st = style("label", fontName="Helvetica-Bold", fontSize=8, leading=11,
                      textColor=MUTED)
     meta_label_st = style("meta_label", fontName="Helvetica-Bold", fontSize=8,
-                          leading=12, textColor=MUTED, alignment=2)   # right
+                          leading=12, textColor=MUTED, alignment=2)
     meta_value_st = style("meta_value", fontName="Helvetica-Bold", fontSize=10.5,
-                          leading=14, textColor=INK, alignment=2)     # right
+                          leading=14, textColor=INK, alignment=2)
     cust_st = style("cust", fontName="Helvetica-Bold", fontSize=12, leading=15,
                     textColor=INK)
     body_st = style("body", fontName="Helvetica", fontSize=9.5, leading=13,
@@ -204,7 +166,6 @@ def render_invoice_pdf(data: InvoiceData) -> bytes:
 
     story: list = []
 
-    # --- Letterhead banner (optional) — user's own stationery header strip ---
     if data.letterhead_png:
         banner = _scaled_image(data.letterhead_png, max_w=content_w, max_h=1.5 * inch)
         if banner is not None:
@@ -212,8 +173,7 @@ def render_invoice_pdf(data: InvoiceData) -> bytes:
             story.append(banner)
             story.append(Spacer(1, 14))
 
-    # --- Header: title + issuer (left) | invoice meta (right), even edges ----
-    left_cell = [Paragraph("INVOICE", title_st), Spacer(1, 6),
+    left_cell = [Paragraph("QUOTATION", title_st), Spacer(1, 6),
                  Paragraph(data.from_company, company_st)]
     if data.from_address:
         left_cell.append(Paragraph(data.from_address.replace("\n", "<br/>"), small_st))
@@ -221,15 +181,15 @@ def render_invoice_pdf(data: InvoiceData) -> bytes:
         left_cell.append(Paragraph(data.from_email, small_st))
 
     meta_rows = []
-    if data.invoice_number:
-        meta_rows.append([Paragraph("INVOICE #", meta_label_st),
-                          Paragraph(data.invoice_number, meta_value_st)])
-    if data.issue_date:
-        meta_rows.append([Paragraph("ISSUED", meta_label_st),
-                          Paragraph(data.issue_date.isoformat(), meta_value_st)])
-    if data.due_date:
-        meta_rows.append([Paragraph("DUE", meta_label_st),
-                          Paragraph(data.due_date.isoformat(), meta_value_st)])
+    if data.quote_number:
+        meta_rows.append([Paragraph("QUOTE #", meta_label_st),
+                          Paragraph(data.quote_number, meta_value_st)])
+    if data.quote_date:
+        meta_rows.append([Paragraph("DATE", meta_label_st),
+                          Paragraph(data.quote_date.isoformat(), meta_value_st)])
+    if data.valid_until:
+        meta_rows.append([Paragraph("VALID UNTIL", meta_label_st),
+                          Paragraph(data.valid_until.isoformat(), meta_value_st)])
     meta_w = 2.7 * inch
     if meta_rows:
         right_cell = Table(meta_rows, colWidths=[1.0 * inch, 1.7 * inch])
@@ -257,8 +217,8 @@ def render_invoice_pdf(data: InvoiceData) -> bytes:
                             spaceBefore=0, spaceAfter=0))
     story.append(Spacer(1, 16))
 
-    # --- Bill to ------------------------------------------------------------
-    story.append(Paragraph("BILL TO", label_st))
+    # --- Quote for ----------------------------------------------------------
+    story.append(Paragraph("QUOTE FOR", label_st))
     story.append(Spacer(1, 3))
     story.append(Paragraph(data.customer_name, cust_st))
     if data.customer_address:
@@ -267,7 +227,6 @@ def render_invoice_pdf(data: InvoiceData) -> bytes:
         story.append(Paragraph(data.customer_email, small_st))
     story.append(Spacer(1, 18))
 
-    # --- Additional details (user-added custom fields) ----------------------
     extra = [(cf.label.strip(), cf.value.strip()) for cf in data.custom_fields
              if cf.label.strip() and cf.value.strip()]
     if extra:
@@ -285,7 +244,6 @@ def render_invoice_pdf(data: InvoiceData) -> bytes:
         story.append(cf_tbl)
         story.append(Spacer(1, 18))
 
-    # --- Line items (full width, even column alignment) ---------------------
     rows = [["DESCRIPTION", "QTY", "UNIT PRICE", "AMOUNT"]]
     for li in data.line_items:
         rows.append([
@@ -297,16 +255,13 @@ def render_invoice_pdf(data: InvoiceData) -> bytes:
     items_tbl = Table(rows, colWidths=[3.5 * inch, 0.7 * inch, 1.45 * inch,
                                        1.45 * inch], repeatRows=1)
     items_tbl.setStyle(TableStyle([
-        # header row
         ("BACKGROUND", (0, 0), (-1, 0), HEAD_BG),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
         ("FONTSIZE", (0, 0), (-1, 0), 8.5),
-        # body rows
         ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
         ("FONTSIZE", (0, 1), (-1, -1), 9.5),
         ("TEXTCOLOR", (0, 1), (-1, -1), INK),
-        # alignment: description left, all numeric columns right
         ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
         ("ALIGN", (0, 0), (0, -1), "LEFT"),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
@@ -320,7 +275,6 @@ def render_invoice_pdf(data: InvoiceData) -> bytes:
     story.append(items_tbl)
     story.append(Spacer(1, 14))
 
-    # --- Totals (right-aligned, accent total bar) ---------------------------
     tdata = [["Subtotal", _money(sym, totals["subtotal"])]]
     if data.tax_rate_percent > 0:
         tdata.append([f"Tax ({data.tax_rate_percent:g}%)", _money(sym, totals["tax"])])
@@ -331,12 +285,10 @@ def render_invoice_pdf(data: InvoiceData) -> bytes:
         ("ALIGN", (0, 0), (0, -1), "LEFT"),
         ("ALIGN", (1, 0), (1, -1), "RIGHT"),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        # subtotal / tax rows
         ("FONTNAME", (0, 0), (-1, last - 1), "Helvetica"),
         ("FONTSIZE", (0, 0), (-1, last - 1), 9.5),
         ("TEXTCOLOR", (0, 0), (0, last - 1), MUTED),
         ("TEXTCOLOR", (1, 0), (1, last - 1), INK),
-        # total row — accent bar
         ("BACKGROUND", (0, last), (-1, last), ACCENT),
         ("TEXTCOLOR", (0, last), (-1, last), colors.white),
         ("FONTNAME", (0, last), (-1, last), "Helvetica-Bold"),
@@ -350,21 +302,19 @@ def render_invoice_pdf(data: InvoiceData) -> bytes:
     ]))
     story.append(totals_tbl)
 
-    # --- Notes --------------------------------------------------------------
     if data.notes.strip():
         story.append(Spacer(1, 26))
         story.append(Paragraph("NOTES", label_st))
         story.append(Spacer(1, 3))
         story.append(Paragraph(data.notes.replace("\n", "<br/>"), body_st))
 
-    # --- Signature (optional) — bottom-right, where the content ends --------
     sig_img = _scaled_image(data.signature_png, max_w=2.2 * inch, max_h=0.85 * inch)
     if sig_img is not None:
         sig_cell = [sig_img, Spacer(1, 2),
                     HRFlowable(width=2.2 * inch, thickness=0.75, color=INK,
                                spaceBefore=2, spaceAfter=4)]
-        label = data.signature_label.strip() or "Authorised signature"
-        sig_cell.append(Paragraph(label,
+        slabel = data.signature_label.strip() or "Authorised signature"
+        sig_cell.append(Paragraph(slabel,
                         style("sig_label", fontName="Helvetica", fontSize=8.5,
                               leading=11, textColor=MUTED, alignment=2)))
         sig_tbl = Table([[sig_cell]], colWidths=[2.4 * inch], hAlign="RIGHT")
@@ -377,11 +327,10 @@ def render_invoice_pdf(data: InvoiceData) -> bytes:
         story.append(Spacer(1, 30))
         story.append(sig_tbl)
 
-    # --- Footer -------------------------------------------------------------
     story.append(Spacer(1, 30))
     story.append(HRFlowable(width=content_w, thickness=0.5, color=HAIRLINE,
                             spaceBefore=0, spaceAfter=8))
-    story.append(Paragraph("Thank you for your business.",
+    story.append(Paragraph("We look forward to working with you.",
                            style("footer", fontName="Helvetica", fontSize=9,
                                  leading=12, textColor=MUTED, alignment=1)))
 
@@ -389,35 +338,26 @@ def render_invoice_pdf(data: InvoiceData) -> bytes:
     return buf.getvalue()
 
 
-def suggest_filename(data: InvoiceData) -> str:
+def suggest_filename(data: QuoteData) -> str:
     """Build a filesystem-friendly default filename for the PDF."""
     cust = "".join(c if c.isalnum() else "_" for c in data.customer_name).strip("_") or "customer"
-    num = "".join(c if c.isalnum() else "_" for c in data.invoice_number).strip("_") or "draft"
-    return f"invoice_{cust}_{num}.pdf"
+    num = "".join(c if c.isalnum() else "_" for c in data.quote_number).strip("_") or "draft"
+    return f"quote_{cust}_{num}.pdf"
 
 
-def to_record(
-    data: InvoiceData,
-    *,
-    status: str = "unpaid",
-    scheduled_reminder_date: Optional[date] = None,
-) -> dict:
-    """Project ``data`` into the canonical *invoice record* dict that the
-    recovery pipeline (invoice agent → daily plan → approval queue) consumes.
-
-    Pure — no DB. The recoverable amount is the invoice total. An optional
-    ``scheduled_reminder_date`` tells the invoice agent to raise a reminder once
-    that date is reached, even before the invoice is technically overdue.
-    """
+def to_record(data: QuoteData, *, status: str = "sent") -> dict:
+    """Project ``data`` into the canonical *quote record* dict that the
+    quote-recovery pipeline (quote agent → daily plan → approval queue) consumes.
+    Pure — no DB."""
     totals = compute_totals(data)
     return {
-        "customer_name": data.customer_name,
-        "invoice_number": data.invoice_number,
-        "amount_due": totals["total"],
-        "invoice_date": data.issue_date.isoformat() if data.issue_date else "",
-        "due_date": data.due_date.isoformat() if data.due_date else "",
-        "payment_status": status,
+        "client_name": data.customer_name,
+        "quote_number": data.quote_number,
+        "quote_amount": totals["total"],
+        "quote_date": data.quote_date.isoformat() if data.quote_date else "",
+        "quote_status": status,
         "email": data.customer_email,
-        "scheduled_reminder_date": (scheduled_reminder_date.isoformat()
-                                    if scheduled_reminder_date else ""),
+        "last_follow_up_date": "",
+        "follow_up_count": 0,
+        "customer_message": "",
     }

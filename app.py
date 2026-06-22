@@ -20,6 +20,7 @@ import streamlit as st
 
 from src import analytics
 from src import bulk_invoice as bulk
+from src import bulk_quote as bulk_q
 from src import column_mapper as cm
 from src import database as db
 from src import email_draft as ed
@@ -27,6 +28,7 @@ from src import export_engine as ex
 from src import ingest
 from src import invoice_generator as ig
 from src import mailer
+from src import quote_generator as qg
 from src import ui
 from src.approval_engine import (
     analyze_and_queue,
@@ -277,6 +279,12 @@ TOUR_STEPS = [
     {"page": "✅ Approvals", "icon": "✍️", "title": "Step 3 — A message is already drafted",
      "body": "Here's a polite follow-up, ready to copy and send from your own email or "
              "WhatsApp. Nothing is ever sent automatically — you stay in control."},
+    {"page": "⚙️ Settings", "icon": "📧", "title": "Step 4 — Connect your email (optional)",
+     "body": "Want each approved follow-up saved straight to your Gmail (or other) "
+             "Drafts folder, attachment and all? Turn on **Save a draft email when I "
+             "approve an item** below and add your address + an app password. We only "
+             "ever save drafts — we never send on your behalf. You can skip this and "
+             "still copy-paste messages by hand."},
 ]
 
 
@@ -1010,13 +1018,19 @@ def page_invoices() -> None:
 def page_quotes() -> None:
     cfg = _PIPELINE["quote"]
     ui.page_header(cfg["title"], cfg["tagline"], icon=cfg["icon"])
-    tabs = st.tabs(["📊 Overview", "🤖 Recommendations", "📋 Records"])
+    tabs = st.tabs(["📊 Overview", "🤖 Recommendations", "📋 Records", "🧮 Generate"])
     with tabs[0]:
         _render_pipeline_overview("quote")
     with tabs[1]:
         _render_pipeline_recommendations("quote")
     with tabs[2]:
         _render_pipeline_records("quote")
+    with tabs[3]:
+        gen_single, gen_bulk = st.tabs(["✍️ Single quote", "📦 Bulk from file"])
+        with gen_single:
+            _render_single_quote()
+        with gen_bulk:
+            _render_bulk_quotes()
 
 
 def page_leads() -> None:
@@ -1255,6 +1269,7 @@ def page_settings() -> None:
     sched = get_scheduler()
     user = _require_login()
     ui.page_header("Settings", "Company details, rules, AI, email drafts and the optional daily run.")
+    _render_tour_step(4)
 
     with st.expander("👤 Account & security (your login email and password)"):
         st.caption(f"Signed in as **{user.email}**. Changing your email keeps all your "
@@ -1651,6 +1666,99 @@ def _single_reminder_dialog() -> None:
         st.rerun()
 
 
+def _render_template_download(kind: str) -> None:
+    """Offer the standardized Excel template for ``kind`` ("invoice"/"quote")."""
+    from src import templates
+    st.download_button(
+        f"⬇️ Download the standard {kind} template (.xlsx)",
+        data=templates.build_template_xlsx(kind),
+        file_name=templates.template_filename(kind),
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True,
+        key=f"tpl_dl_{kind}",
+    )
+    st.caption("Fill this in and upload it on the **Bulk from file** tab — the columns "
+               "auto-match, so there's nothing to map. The same fields are used here in "
+               "the manual form.")
+
+
+def _render_branding_inputs(prefix: str, kind: str) -> None:
+    """Letterhead + e-signature uploaders shared by the invoice/quote generators.
+    Bytes are stored in session_state (``{prefix}_letterhead_bytes`` etc.) so they
+    survive the reruns the reminder dialog triggers. ``kind`` is for copy only."""
+    with st.expander("🎨 Letterhead & signature (optional)", expanded=False):
+        st.caption("Add your own stationery and signature so every generated "
+                   f"{kind} looks like it came straight from your business. "
+                   "Images stay on this device/session and are never sent anywhere.")
+        c1, c2 = st.columns(2)
+        lh = c1.file_uploader("Blank letterhead image (top banner)",
+                              type=["png", "jpg", "jpeg"], key=f"{prefix}_letterhead_up")
+        if lh is not None:
+            st.session_state[f"{prefix}_letterhead_bytes"] = lh.getvalue()
+        if st.session_state.get(f"{prefix}_letterhead_bytes"):
+            c1.success("Letterhead loaded ✓")
+            if c1.button("Remove letterhead", key=f"{prefix}_lh_clear"):
+                st.session_state.pop(f"{prefix}_letterhead_bytes", None)
+                st.rerun()
+        sig = c2.file_uploader("E-signature image (bottom-right)",
+                               type=["png", "jpg", "jpeg"], key=f"{prefix}_signature_up")
+        if sig is not None:
+            st.session_state[f"{prefix}_signature_bytes"] = sig.getvalue()
+        if st.session_state.get(f"{prefix}_signature_bytes"):
+            c2.success("Signature loaded ✓")
+            if c2.button("Remove signature", key=f"{prefix}_sig_clear"):
+                st.session_state.pop(f"{prefix}_signature_bytes", None)
+                st.rerun()
+        st.text_input("Signature caption (e.g. 'For Acme Studio')",
+                      key=f"{prefix}_signature_label")
+
+
+def _render_custom_field_editor(prefix: str) -> None:
+    """A '+ add field' editor for extra label/value details. The app auto-detects
+    each added field and renders it in the PDF's 'Additional details' grid; when
+    AI is on, it also tidies the wording at generation time."""
+    key = f"{prefix}_custom_src"
+    if key not in st.session_state:
+        st.session_state[key] = pd.DataFrame(columns=["Field", "Value"])
+    with st.expander("➕ Add custom fields (optional)", expanded=False):
+        st.caption("Need a field we don't show — PO number, project, VAT ID? Add rows "
+                   "here with the **+** at the bottom of the table. They'll appear on "
+                   "the document automatically.")
+        st.session_state[key] = st.data_editor(
+            st.session_state[key], num_rows="dynamic", use_container_width=True,
+            key=f"{prefix}_custom_editor",
+            column_config={
+                "Field": st.column_config.TextColumn("Field", help="e.g. PO Number"),
+                "Value": st.column_config.TextColumn("Value", help="e.g. PO-9912"),
+            },
+        )
+
+
+def _collect_custom_fields(prefix: str) -> list:
+    """Read the custom-field editor into a list of ``ig.CustomField``. When AI is
+    available, the labels/values are lightly cleaned up for a professional look —
+    deterministic fallback is the raw text, so this never blocks generation."""
+    src = st.session_state.get(f"{prefix}_custom_src")
+    if not isinstance(src, pd.DataFrame) or src.empty:
+        return []
+    pairs = []
+    for _, row in src.iterrows():
+        label = str(row.get("Field") or "").strip()
+        value = str(row.get("Value") or "").strip()
+        if label and value:
+            pairs.append((label, value))
+    if not pairs:
+        return []
+    try:
+        from src import ai_helper
+        settings = get_settings()
+        if ai_helper.ai_available(settings):
+            pairs = ai_helper.analyze_custom_fields(settings, pairs) or pairs
+    except Exception:  # noqa: BLE001 — AI polish is best-effort, never fatal
+        pass
+    return [ig.CustomField(label=l, value=v) for l, v in pairs]
+
+
 def _render_single_invoice() -> None:
     mem = get_memory()
     settings = get_settings()
@@ -1683,6 +1791,10 @@ def _render_single_invoice() -> None:
             st.rerun()
         st.caption("Loading a format never sends anything and never touches invoices "
                    "you've already generated — it only pre-fills the form below.")
+
+    # --- Branding & extras (outside the form so uploads persist) -------------
+    _render_branding_inputs("ig", "invoice")
+    _render_custom_field_editor("ig")
 
     with st.form("invoice_generator_form", clear_on_submit=False):
         ui.section("From")
@@ -1782,6 +1894,10 @@ def _render_single_invoice() -> None:
         line_items=line_items,
         tax_rate_percent=float(tax_rate),
         notes=notes,
+        custom_fields=_collect_custom_fields("ig"),
+        letterhead_png=st.session_state.get("ig_letterhead_bytes"),
+        signature_png=st.session_state.get("ig_signature_bytes"),
+        signature_label=st.session_state.get("ig_signature_label", ""),
     )
 
     # Light pre-validation (the renderer re-checks) so the reminder pop-up only
@@ -1844,6 +1960,9 @@ def _render_bulk_invoices() -> None:
                "every row at once. Each customer's saved format (branding, currency, "
                "tax) is applied automatically, and any row whose invoice number you "
                "already created by hand is **skipped** — never overwritten.")
+
+    _render_template_download("invoice")
+    _render_branding_inputs("igbulk", "invoice")
 
     col_u, col_s = st.columns([2, 1])
     with col_u:
@@ -1984,6 +2103,16 @@ def _finalize_bulk(mem, settings, days_after) -> None:
     if p["teach"]:
         mem.learn_aliases("invoice_bulk", mapping)  # Phase 4: detector learns
 
+    # Apply the batch-wide letterhead/signature (if uploaded) to every invoice.
+    lh = st.session_state.get("igbulk_letterhead_bytes")
+    sig = st.session_state.get("igbulk_signature_bytes")
+    sig_label = st.session_state.get("igbulk_signature_label", "")
+    for r in ready:
+        if r.data is not None:
+            r.data.letterhead_png = lh
+            r.data.signature_png = sig
+            r.data.signature_label = sig_label
+
     rendered = bulk.render_all(ready)  # renders each PDF exactly once
     drafts_made = 0
     scheduled = 0
@@ -2048,6 +2177,311 @@ def _bulk_reminder_dialog() -> None:
     if c2.button("Cancel", use_container_width=True):
         st.session_state.pop("ig_bulk_pending", None)
         st.rerun()
+
+
+# ---------------------------------------------------------------------------
+# Quote Generator — manual form + bulk-from-file, mirroring the invoice
+# generator but producing quotations (no payment reminder pop-up; an accepted
+# quote is followed up through the normal quote-recovery pipeline instead).
+# ---------------------------------------------------------------------------
+_QG_TEXT_DEFAULTS = {
+    "qg_from_company": "company_name",
+    "qg_from_email": "email_address",
+    "qg_from_address": "",
+    "qg_customer_name": "",
+    "qg_customer_email": "",
+    "qg_currency": "currency_symbol",
+    "qg_notes": "",
+}
+
+
+def _seed_quote_defaults(settings: Settings) -> None:
+    ss = st.session_state
+    if ss.get("_qg_seeded"):
+        return
+    settings_map = {"company_name": settings.company_name or "",
+                    "email_address": settings.email_address or "",
+                    "currency_symbol": settings.currency_symbol or "$"}
+    for key, source in _QG_TEXT_DEFAULTS.items():
+        ss.setdefault(key, settings_map.get(source, source))
+    ss.setdefault("qg_tax_rate", 0.0)
+    ss.setdefault("qg_quote_date", today())
+    ss.setdefault("qg_valid_until", today() + timedelta(days=30))
+    ss.setdefault("qg_items_src", _default_line_items())
+    ss.setdefault("qg_items_version", 0)
+    ss["_qg_seeded"] = True
+
+
+def _render_single_quote() -> None:
+    mem = get_memory()
+    settings = get_settings()
+    _seed_quote_defaults(settings)
+
+    res = st.session_state.get("qg_result_single")
+    if res:
+        if res.get("error"):
+            st.error(res["error"])
+        else:
+            st.success(f"Quote rendered · total {format_currency(res['total'], settings)}")
+            cdl, cdr = st.columns(2)
+            cdl.download_button("⬇️ Download PDF", res["pdf"], file_name=res["filename"],
+                                mime="application/pdf", use_container_width=True,
+                                key="qg_single_dl")
+            if res.get("draft_ok") is True:
+                cdr.success("Draft saved to your email Drafts folder.")
+            elif res.get("draft_ok") is False:
+                cdr.warning(f"Couldn't save draft: {res.get('draft_reason')}")
+            else:
+                cdr.caption("Email drafting off — PDF downloaded only.")
+        st.session_state.pop("qg_result_single", None)
+
+    if not ed.email_draft_available(settings):
+        st.warning("Email drafting isn't configured. You can still generate and download "
+                   "the PDF; add credentials in **Settings → Email drafts** to also save "
+                   "a draft.", icon="✉️")
+
+    _render_branding_inputs("qg", "quote")
+    _render_custom_field_editor("qg")
+
+    with st.form("quote_generator_form", clear_on_submit=False):
+        ui.section("From")
+        c1, c2 = st.columns(2)
+        from_company = c1.text_input("Your company", key="qg_from_company")
+        from_email = c2.text_input("Your email", key="qg_from_email")
+        from_address = st.text_area("Your address (optional)", key="qg_from_address",
+                                    height=70)
+
+        ui.section("Quote for")
+        c1, c2 = st.columns(2)
+        customer_name = c1.text_input("Customer name", key="qg_customer_name")
+        customer_email = c2.text_input("Customer email", key="qg_customer_email")
+
+        ui.section("Quote details")
+        c1, c2, c3 = st.columns(3)
+        quote_number = c1.text_input("Quote #", key="qg_quote_number")
+        quote_date = c2.date_input("Quote date", key="qg_quote_date")
+        valid_until = c3.date_input("Valid until", key="qg_valid_until")
+
+        c1, c2 = st.columns([1, 3])
+        currency_symbol = c1.text_input("Currency", key="qg_currency", max_chars=3)
+        tax_rate = c2.number_input("Tax rate (%)", min_value=0.0, max_value=100.0,
+                                   step=0.5, key="qg_tax_rate")
+
+        ui.section("Line items")
+        items_df = st.data_editor(
+            st.session_state["qg_items_src"], num_rows="dynamic",
+            use_container_width=True,
+            key=f"qg_items_editor_v{st.session_state['qg_items_version']}",
+            column_config={
+                "Quantity": st.column_config.NumberColumn(min_value=0.0, step=1.0),
+                "Unit price": st.column_config.NumberColumn(min_value=0.0, step=1.0,
+                                                            format="%.2f"),
+            },
+        )
+
+        ui.section("Email draft")
+        c1, c2 = st.columns(2)
+        email_subject = c1.text_input(
+            "Subject",
+            value=f"Quotation {quote_number or ''} from {from_company or ''}".strip())
+        email_body = c2.text_area(
+            "Body",
+            value=(f"Hi {customer_name or 'there'},\n\nPlease find your quotation "
+                   "attached. Let me know if you'd like to proceed or have any "
+                   f"questions.\n\n{settings.message_signature or ''}").strip(),
+            height=120)
+        notes = st.text_area("Notes on the quote (optional)", key="qg_notes", height=70)
+        track = st.checkbox("Track this quote so I get follow-up reminders if there's "
+                            "no reply", value=True, key="qg_track")
+        submitted = st.form_submit_button("Generate & save draft", type="primary",
+                                          use_container_width=True)
+
+    if not submitted:
+        return
+
+    st.session_state["qg_items_src"] = items_df
+    line_items: list = []
+    for _, row in items_df.iterrows():
+        desc = str(row.get("Description") or "").strip()
+        if not desc:
+            continue
+        try:
+            qty = float(row.get("Quantity") or 0)
+            price = float(row.get("Unit price") or 0)
+        except (TypeError, ValueError):
+            st.error("Quantity and unit price must be numeric.")
+            return
+        line_items.append(qg.LineItem(description=desc, quantity=qty, unit_price=price))
+
+    if not from_company.strip():
+        st.error("Your company name is required."); return
+    if not customer_name.strip():
+        st.error("Customer name is required."); return
+    if not line_items:
+        st.error("Add at least one line item."); return
+
+    data = qg.QuoteData(
+        from_company=from_company, from_email=from_email, from_address=from_address,
+        customer_name=customer_name, customer_email=customer_email,
+        quote_number=quote_number, quote_date=quote_date, valid_until=valid_until,
+        currency_symbol=currency_symbol or "$", line_items=line_items,
+        tax_rate_percent=float(tax_rate), notes=notes,
+        custom_fields=_collect_custom_fields("qg"),
+        letterhead_png=st.session_state.get("qg_letterhead_bytes"),
+        signature_png=st.session_state.get("qg_signature_bytes"),
+        signature_label=st.session_state.get("qg_signature_label", ""),
+    )
+
+    try:
+        pdf = qg.render_quote_pdf(data)
+    except qg.QuoteError as exc:
+        st.session_state["qg_result_single"] = {"error": str(exc)}
+        st.rerun()
+
+    filename = qg.suggest_filename(data)
+    totals = qg.compute_totals(data)
+    if track:
+        analyze_and_queue(mem, settings, {"quote": [qg.to_record(data)]})
+
+    draft_ok, draft_reason = None, ""
+    if ed.email_draft_available(settings):
+        draft_ok, draft_reason = ed.save_draft_with_attachment(
+            settings=settings, to_addr=customer_email, subject=email_subject,
+            body=email_body, attachment_bytes=pdf, attachment_filename=filename,
+            attachment_mime="application/pdf")
+
+    st.session_state["qg_result_single"] = {
+        "pdf": pdf, "filename": filename, "total": totals["total"],
+        "draft_ok": draft_ok, "draft_reason": draft_reason,
+    }
+    st.rerun()
+
+
+def _render_bulk_quotes() -> None:
+    mem = get_memory()
+    settings = get_settings()
+    _require_login()
+
+    st.caption("Upload a spreadsheet of quotations and generate a branded PDF for every "
+               "row at once. Map an **Amount** plus a **Customer** or **Company** name "
+               "to continue.")
+    _render_template_download("quote")
+    _render_branding_inputs("qgbulk", "quote")
+
+    col_u, col_s = st.columns([2, 1])
+    with col_u:
+        uploaded = st.file_uploader("Quote spreadsheet (CSV or Excel)",
+                                    type=["csv", "xlsx", "xls"], key="qg_bulk_file")
+    with col_s:
+        st.markdown("**🎁 No file handy?**")
+        if st.button("✨ Load matching sample", key="qg_bulk_load_sample"):
+            from src import templates
+            st.session_state.qg_bulk_sample_bytes = templates.build_template_xlsx("quote")
+            st.session_state.qg_bulk_sample_name = "quote_template.xlsx"
+            st.toast("Loaded the quote template as a sample.", icon="✨")
+
+    if uploaded is not None:
+        data, fname = uploaded.getvalue(), uploaded.name
+        st.session_state.pop("qg_bulk_sample_bytes", None)
+    elif st.session_state.get("qg_bulk_sample_bytes"):
+        data = st.session_state["qg_bulk_sample_bytes"]
+        fname = st.session_state.get("qg_bulk_sample_name", "quote_template.xlsx")
+    else:
+        st.info("No file yet. Each row needs at least a **customer name** and an "
+                "**amount**; a quote number and dates are recommended.")
+        return
+
+    try:
+        df, meta = ingest.read_table(data, fname)
+    except Exception as exc:  # noqa: BLE001
+        st.error(f"Could not read the file: {exc}")
+        return
+    if df.empty:
+        st.warning("No data rows found in that file.")
+        return
+    st.dataframe(df.head(10), use_container_width=True)
+
+    ui.section("Map the columns")
+    learned = mem.learned_aliases("quote_bulk")
+    base_mapping, _ = cm.detect_mapping(list(df.columns), "quote_bulk", learned=learned)
+    options = ["(none)"] + list(df.columns)
+    labels = {"customer_name": "Customer name", "company_name": "Company name",
+              "contact_person": "Contact person", "email": "Email",
+              "mobile_number": "Mobile number", "address": "Address",
+              "quote_number": "Quote #", "amount_due": "Amount",
+              "quote_date": "Quote date", "valid_until": "Valid until",
+              "description": "Description"}
+    mapping: dict = {}
+    grid = st.columns(4)
+    for i, fld in enumerate(cm.BULK_QUOTE_FIELDS.keys()):
+        default = base_mapping.get(fld, "(none)")
+        idx = options.index(default) if default in options else 0
+        label = ("✅ " if fld in base_mapping else "") + labels.get(fld, fld)
+        choice = grid[i % 4].selectbox(label, options, index=idx, key=f"qg_bulk_map_{fld}")
+        if choice != "(none)":
+            mapping[fld] = choice
+
+    if not ({"customer_name", "company_name"} & set(mapping)) or "amount_due" not in mapping:
+        st.warning("Map an **Amount** plus at least one of **Customer name** or "
+                   "**Company name** to continue.")
+        return
+
+    rows = [{fld: row.get(col) for fld, col in mapping.items()}
+            for _, row in df.iterrows()]
+    results = bulk_q.plan_rows(
+        rows, manual_exists=lambda c, n: False, get_profile=lambda name: None,
+        default_issuer={"company": settings.company_name or "",
+                        "email": settings.email_address or "", "address": ""},
+        default_currency=settings.currency_symbol or "$")
+    counts = bulk_q.summarize(results)
+
+    ui.section("Preview")
+    status_icon = {bulk_q.READY: "✅ Ready", bulk_q.ERROR: "⚠️ Error"}
+    preview = pd.DataFrame([{
+        "Row": r.row_index + 1, "Customer": r.customer_name,
+        "Quote #": r.quote_number, "Amount": r.amount,
+        "Status": status_icon.get(r.status, r.status), "Detail": r.reason,
+    } for r in results])
+    st.dataframe(preview, use_container_width=True, height=320)
+    mc = st.columns(2)
+    mc[0].metric("Ready", counts[bulk_q.READY])
+    mc[1].metric("Errors", counts[bulk_q.ERROR])
+
+    ready = [r for r in results if r.status == bulk_q.READY]
+    if not ready:
+        st.info("Nothing to generate yet — fix the errored rows or map more columns.")
+        return
+
+    teach = st.checkbox("📚 Remember these column names for next time", value=True,
+                        key="qg_bulk_teach")
+    track = st.checkbox("Track these quotes for follow-up reminders", value=True,
+                        key="qg_bulk_track")
+
+    if st.button(f"⚙️ Generate {len(ready)} quote(s)", type="primary",
+                 key="qg_bulk_go", use_container_width=True):
+        if teach:
+            mem.learn_aliases("quote_bulk", mapping)
+        lh = st.session_state.get("qgbulk_letterhead_bytes")
+        sig = st.session_state.get("qgbulk_signature_bytes")
+        sig_label = st.session_state.get("qgbulk_signature_label", "")
+        for r in ready:
+            if r.data is not None:
+                r.data.letterhead_png = lh
+                r.data.signature_png = sig
+                r.data.signature_label = sig_label
+        rendered = bulk_q.render_all(ready)
+        if track:
+            for result, _fn, _pdf in rendered:
+                analyze_and_queue(mem, settings, {"quote": [qg.to_record(result.data)]})
+        st.session_state["qg_bulk_zip"] = bulk_q.zip_pdfs(rendered)
+        st.session_state["qg_bulk_msg"] = f"Generated **{len(rendered)}** quote(s)."
+        st.rerun()
+
+    if st.session_state.get("qg_bulk_zip"):
+        st.success(st.session_state.get("qg_bulk_msg", "Quotes generated."))
+        st.download_button("⬇️ Download all as ZIP", st.session_state["qg_bulk_zip"],
+                           file_name="quotes.zip", mime="application/zip",
+                           key="qg_bulk_dl", use_container_width=True)
 
 
 # ---------------------------------------------------------------------------
