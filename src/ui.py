@@ -247,6 +247,30 @@ input, textarea, [data-baseweb="select"] input { border:none !important; box-sha
   background:linear-gradient(180deg, #ffedd5 0%, #fed7aa 100%) !important;
   border-color:#fdba74 !important; transform:translateY(-1px); }
 
+/* ---------------- Guided tour banner ---------------- */
+@keyframes rrd-tour-glow {
+  0%,100% { box-shadow:0 0 0 0 rgba(234,88,12,.45); }
+  50%     { box-shadow:0 0 0 8px rgba(234,88,12,0); } }
+.rrd-tour { position:relative; margin:0 0 1.2rem; padding:1.05rem 1.3rem;
+  border-radius:16px; border:1px solid #fed7aa;
+  background:linear-gradient(135deg,#fff7ed 0%,#ffedd5 65%,#fff7ed 100%);
+  animation: rrd-fade-up .4s ease both; }
+.rrd-tour-top { display:flex; align-items:center; justify-content:space-between;
+  gap:.75rem; flex-wrap:wrap; margin-bottom:.5rem; }
+.rrd-tour-step { font-size:.74rem; font-weight:800; letter-spacing:.06em;
+  text-transform:uppercase; color:#c2410c; }
+.rrd-tour-dots { display:flex; gap:7px; }
+.rrd-tour-dot { width:9px; height:9px; border-radius:50%; background:#fed7aa;
+  transition:background .2s ease, transform .2s ease; }
+.rrd-tour-dot.done { background:#ea580c; }
+.rrd-tour-dot.active { background:#ea580c; transform:scale(1.25);
+  animation: rrd-tour-glow 1.5s ease-in-out infinite; }
+.rrd-tour-title { font-size:1.05rem; font-weight:800; color:#7c2d12; margin:.1rem 0 .25rem;
+  display:flex; align-items:center; gap:.5rem; }
+.rrd-tour-title .ic { font-size:1.4rem; line-height:1; }
+.rrd-tour-body { font-size:.92rem; color:#9a3412; margin:0; line-height:1.5; max-width:760px; }
+.rrd-tour-actions .stButton>button { font-weight:700 !important; }
+
 /* ================= Custom components ================= */
 .rrd-head { margin:0 0 .2rem; position:relative; padding-left:18px; }
 .rrd-head::before {
@@ -532,6 +556,26 @@ def page_header(title: str, subtitle: str = "", icon: str = "") -> None:
     sub = f"<p>{subtitle}</p>" if subtitle else ""
     st.markdown(
         f'<div class="rrd-head"><h1>{ic}{title}</h1>{sub}</div><hr class="rrd-rule"/>',
+        unsafe_allow_html=True,
+    )
+
+
+def tour_banner(step: int, total: int, icon: str, title: str, body: str) -> None:
+    """Animated progress banner for the guided product tour — a pulsing dot
+    marks the current step, filled dots mark completed ones."""
+    dots = []
+    for i in range(1, total + 1):
+        cls = "done" if i < step else ("active" if i == step else "")
+        dots.append(f'<span class="rrd-tour-dot {cls}"></span>')
+    st.markdown(
+        f'<div class="rrd-tour">'
+        f'<div class="rrd-tour-top">'
+        f'<span class="rrd-tour-step">Guided tour · Step {step} of {total}</span>'
+        f'<div class="rrd-tour-dots">{"".join(dots)}</div>'
+        f'</div>'
+        f'<div class="rrd-tour-title"><span class="ic">{icon}</span>{title}</div>'
+        f'<p class="rrd-tour-body">{body}</p>'
+        f'</div>',
         unsafe_allow_html=True,
     )
 

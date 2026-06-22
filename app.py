@@ -229,8 +229,10 @@ def _records_from_df(df: pd.DataFrame, mapping: dict, status_map: dict | None = 
 def _run_one_click_demo() -> tuple[int, int | None]:
     """Loads the sample invoice file, auto-maps it, and analyzes it — so a new
     user reaches a finished, drafted follow-up message in one click instead of
-    walking through Upload Center by hand. Returns (recommendation_count,
-    id_of_a_normal_customer-ready_item_to_highlight_in_the_queue)."""
+    walking through Upload Center by hand. Also stashes the sample into the
+    Upload Center / Daily Plan session state, so a guided tour through those
+    pages shows the same real data instead of an empty screen. Returns
+    (recommendation_count, id_of_a_normal_customer-ready_item_to_highlight)."""
     mem = get_memory()
     settings = get_settings()
     from sample_data.generate_samples import generate_all
@@ -238,7 +240,12 @@ def _run_one_click_demo() -> tuple[int, int | None]:
     path = SAMPLE_DIR / "sample_invoices.xlsx"
     if not path.exists():
         generate_all()
-    df, _ = ingest.read_table(path.read_bytes(), path.name)
+    file_bytes = path.read_bytes()
+    st.session_state.upload_bytes = file_bytes
+    st.session_state.upload_type = "invoice"
+    st.session_state.upload_name = path.name
+
+    df, _ = ingest.read_table(file_bytes, path.name)
     learned = mem.learned_aliases("invoice")
     mapping, _ = cm.detect_mapping(list(df.columns), "invoice", learned=learned)
     raw_vals = sorted({str(v).strip() for v in df[mapping["payment_status"]].dropna().unique()
@@ -246,6 +253,7 @@ def _run_one_click_demo() -> tuple[int, int | None]:
     status_map = cm.suggest_status_map(raw_vals, "invoice")
     records = _records_from_df(df, mapping, status_map, "invoice")
     plan = analyze_and_queue(mem, settings, {"invoice": records})
+    st.session_state.last_plan = plan
     items = list_queue(mem, "pending")
     # Prefer a normal customer-facing draft over an "internal review only"
     # placeholder (high-value invoices are deliberately held for human
@@ -253,6 +261,64 @@ def _run_one_click_demo() -> tuple[int, int | None]:
     highlight = next((it["id"] for it in items
                       if not (it["suggested_message"] or "").startswith("INTERNAL DRAFT")), None)
     return len(plan), highlight
+
+
+# ---------------------------------------------------------------------------
+# Guided tour — narrated walk through Upload -> Daily Plan -> Approvals
+# ---------------------------------------------------------------------------
+TOUR_STEPS = [
+    {"page": "📤 Upload", "icon": "📤", "title": "Step 1 — Your data comes in",
+     "body": "We've loaded 5 realistic sample invoices for you — paid, overdue, even one "
+             "disputed. In real use this would be your own spreadsheet, any layout — scroll "
+             "down and look for the ✅ marks where columns were auto-matched."},
+    {"page": "🗂️ Daily Plan", "icon": "🤖", "title": "Step 2 — The agent ranks what matters",
+     "body": "Every invoice gets scored by how overdue and how valuable it is. This is your "
+             "to-do list for the day — no more guessing who to chase first."},
+    {"page": "✅ Approvals", "icon": "✍️", "title": "Step 3 — A message is already drafted",
+     "body": "Here's a polite follow-up, ready to copy and send from your own email or "
+             "WhatsApp. Nothing is ever sent automatically — you stay in control."},
+]
+
+
+def _start_tour() -> None:
+    """Runs the one-click demo, then opens the guided tour on its first stop."""
+    highlight = _run_one_click_demo()[1]
+    st.session_state["tour_step"] = 1
+    st.session_state["tour_highlight_id"] = highlight
+    _goto(TOUR_STEPS[0]["page"])
+
+
+def _end_tour() -> None:
+    st.session_state.pop("tour_step", None)
+    st.session_state.pop("tour_highlight_id", None)
+
+
+def _render_tour_step(step_num: int) -> None:
+    """Shows the animated tour banner + Back/Next/Skip controls when the
+    guided tour is active and currently on this step's page."""
+    if st.session_state.get("tour_step") != step_num:
+        return
+    info = TOUR_STEPS[step_num - 1]
+    ui.tour_banner(step_num, len(TOUR_STEPS), info["icon"], info["title"], info["body"])
+    st.markdown('<div class="rrd-tour-actions">', unsafe_allow_html=True)
+    cols = st.columns([1, 1, 1, 4])
+    if step_num > 1 and cols[0].button("← Back", key=f"tour_back_{step_num}", use_container_width=True):
+        st.session_state["tour_step"] = step_num - 1
+        _goto(TOUR_STEPS[step_num - 2]["page"])
+    if step_num < len(TOUR_STEPS):
+        if cols[1].button("Next →", key=f"tour_next_{step_num}", type="primary", use_container_width=True):
+            st.session_state["tour_step"] = step_num + 1
+            _goto(TOUR_STEPS[step_num]["page"])
+    else:
+        if cols[1].button("🎉 Finish tour", key=f"tour_finish_{step_num}",
+                          type="primary", use_container_width=True):
+            _end_tour()
+            st.toast("That's the full loop! Try it with your own data next.", icon="🎉")
+            st.rerun()
+    if cols[2].button("Skip tour ✕", key=f"tour_skip_{step_num}", use_container_width=True):
+        _end_tour()
+        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
 
 
 # ---------------------------------------------------------------------------
@@ -295,19 +361,16 @@ def page_welcome() -> None:
         unsafe_allow_html=True,
     )
 
-    # --- One-click guided demo ---------------------------------------------
+    # --- Guided product tour ------------------------------------------------
     dc1, dc2, dc3 = st.columns([1, 2, 1])
     with dc2:
-        if st.button("▶️  See it work in 30 seconds (no setup needed)",
+        if st.button("🧭  Take the guided tour (no setup needed)",
                      type="primary", use_container_width=True, key="welc_demo"):
-            count, highlight = _run_one_click_demo()
-            st.session_state["demo_highlight_id"] = highlight
-            st.session_state["demo_banner"] = count
-            _goto("✅ Approvals")
+            _start_tour()
         st.caption(
-            "Loads 5 realistic sample invoices and shows you a finished, "
-            "ready-to-send follow-up message — nothing is sent, and nothing "
-            "you do here touches a real customer.",
+            "A real, 3-step walkthrough with 5 sample invoices — see your data come in, "
+            "get ranked, and turn into a ready-to-send message. Nothing is sent, and "
+            "nothing you do here touches a real customer.",
         )
 
     # --- Section 1: What this app can do ----------------------------------
@@ -537,15 +600,12 @@ def page_dashboard() -> None:
         ui.empty_state(
             "Bring in your first file to get started",
             "Import invoices, quotes or leads in the Upload Center. No file handy? "
-            "Load a one-click sample to explore the app with realistic data.",
+            "Take the guided tour to explore the app with realistic data.",
             icon="📂",
         )
         dcol1, dcol2 = st.columns(2)
-        if dcol1.button("▶️ See it work in 30 seconds", type="primary", use_container_width=True):
-            count, highlight = _run_one_click_demo()
-            st.session_state["demo_highlight_id"] = highlight
-            st.session_state["demo_banner"] = count
-            _goto("✅ Approvals")
+        if dcol1.button("🧭 Take the guided tour", type="primary", use_container_width=True):
+            _start_tour()
         if dcol2.button("Open Upload Center", use_container_width=True):
             _goto("📤 Upload")
         return
@@ -625,6 +685,7 @@ def page_upload() -> None:
     settings = get_settings()
     ui.page_header("Upload Center", "Import any client's invoices, quotes or leads — "
                    "we adapt to their columns, formats and wording.")
+    _render_tour_step(1)
 
     st.info("**Built for many clients.** Each client's file can look totally different. "
             "Map it once, save it as a **profile**, and next time we recognise their layout "
@@ -793,6 +854,7 @@ def page_daily_plan() -> None:
     settings = get_settings()
     ui.page_header("Daily Recovery Plan",
                    "Everyone who needs a nudge, ranked by urgency — your to-do list for the day.")
+    _render_tour_step(2)
 
     if st.button("🔄 Rebuild plan from current data"):
         summary = run_daily_analysis(mem, settings)
@@ -974,6 +1036,7 @@ def page_approvals() -> None:
     settings = get_settings()
     ui.page_header("Approval Queue",
                    "Review, approve, then send it yourself and mark it done.")
+    _render_tour_step(3)
 
     st.info("**The 4 steps:** ① review & edit the message → ② click **Approve** → "
             "③ **copy it and send from your own WhatsApp/email** → ④ click **Mark completed**. "
@@ -988,15 +1051,8 @@ def page_approvals() -> None:
     if draft_failed_reason:
         st.warning(f"📧 Could not save the email draft: {draft_failed_reason}")
 
-    demo_count = st.session_state.pop("demo_banner", None)
-    highlight_id = st.session_state.pop("demo_highlight_id", None)
-    if demo_count is not None:
-        st.success(
-            f"🎬 **Demo loaded** — {demo_count} recommendation(s) from 5 sample invoices "
-            "(Acme Corp, Bright Studios, Cedar & Co...). The item below is opened for you "
-            "as an example — try editing it, then **Approve**. Items marked 🔒 are high-value "
-            "and deliberately held for your judgment instead of an auto-draft."
-        )
+    highlight_id = (st.session_state.get("tour_highlight_id")
+                    if st.session_state.get("tour_step") == 3 else None)
 
     s = analytics.stats(mem)
     st.caption(f"{s['handled']} of {s['total_items'] or 0} recommendations handled.")
