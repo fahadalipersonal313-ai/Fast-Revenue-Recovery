@@ -500,6 +500,34 @@ def page_welcome() -> None:
         )
 
 
+def _todays_actions(mem: AgentMemory) -> list[dict]:
+    """Bucket pending recommendations into one plain-English action per type.
+    Returns at most three entries (invoice → quote → lead) so the home card
+    stays scannable — never more than three things to do today."""
+    actions: list[dict] = []
+    verbs = {
+        "invoice": ("🧾", "Chase", "overdue invoice", "🧾 Invoices"),
+        "quote":   ("📄", "Follow up on", "stale quote", "📄 Quotes"),
+        "lead":    ("🎯", "Reach out to", "cold lead", "🎯 Leads"),
+    }
+    pending = list_queue(mem, "pending")
+    for rtype, (icon, verb, noun, page) in verbs.items():
+        items = [it for it in pending if it.get("record_type") == rtype]
+        if not items:
+            continue
+        total = sum(float(it.get("amount") or 0) for it in items)
+        count = len(items)
+        actions.append({
+            "icon": icon,
+            "verb": verb,
+            "noun": noun + ("s" if count != 1 else ""),
+            "count": count,
+            "amount": total,
+            "page": page,
+        })
+    return actions
+
+
 def page_dashboard() -> None:
     mem = get_memory()
     s = analytics.stats(mem)
@@ -521,6 +549,31 @@ def page_dashboard() -> None:
         if dcol2.button("Open Upload Center", use_container_width=True):
             _goto("📤 Upload")
         return
+
+    ui.section("What should I do today?",
+               "Three things at most — when these are done, you're done.")
+    actions = _todays_actions(mem)
+    if not actions:
+        st.success("✅ **You're all caught up.** No follow-ups need your attention right now. "
+                   "Check back tomorrow — new reminders show up as invoices age and "
+                   "quotes go stale.", icon="🎉")
+    else:
+        lines = []
+        for a in actions:
+            money_str = money(a["amount"]) if a["amount"] > 0 else ""
+            tail = f" worth **{money_str}**" if money_str else ""
+            lines.append(f"{a['icon']} **{a['verb']} {a['count']} {a['noun']}**{tail}")
+        st.markdown("\n\n".join(lines))
+        bcols = st.columns([2, 1, 1, 1])
+        if bcols[0].button("👉 Review them in the Approval Queue",
+                           type="primary", use_container_width=True,
+                           key="today_go_approvals"):
+            _goto("✅ Approvals")
+        for col, a in zip(bcols[1:], actions):
+            if col.button(a["icon"] + " " + a["noun"].rstrip("s").title() + "s",
+                          use_container_width=True,
+                          key=f"today_go_{a['page']}"):
+                _goto(a["page"])
 
     ui.section("Money overview")
     ui.kpi_cards([
@@ -553,12 +606,6 @@ def page_dashboard() -> None:
             ("Review and approve items in the queue", done[1]),
             ("Send a message, then mark it completed", done[2]),
         ])
-
-    if s["pending"] > 0:
-        ui.section("Next step")
-        st.info(f"You have **{s['pending']}** recommendation(s) waiting for your review.")
-        if st.button("Go to Approvals", type="primary"):
-            _goto("✅ Approvals")
 
     with st.expander("How this works (30-second version)"):
         st.markdown(
