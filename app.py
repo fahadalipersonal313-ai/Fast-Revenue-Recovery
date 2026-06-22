@@ -1692,8 +1692,12 @@ def _render_branding_inputs(prefix: str, kind: str) -> None:
                    "Images stay on this device/session and are never sent anywhere. "
                    "Once a letterhead is loaded, **Your company/email/address below "
                    "become optional** — that information is already on the artwork.")
+        st.caption("📄 **Upload a full-page letterhead** (a whole A4/Letter page "
+                   "with your header at the top and footer at the bottom) and we "
+                   "print the details into its blank middle area automatically. A "
+                   "short, wide image is placed as a top banner instead.")
         c1, c2 = st.columns(2)
-        lh = c1.file_uploader("Blank letterhead image (top banner)",
+        lh = c1.file_uploader("Letterhead image (full page or top banner)",
                               type=["png", "jpg", "jpeg"], key=f"{prefix}_letterhead_up")
         if lh is not None:
             st.session_state[f"{prefix}_letterhead_bytes"] = lh.getvalue()

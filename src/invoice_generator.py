@@ -26,8 +26,11 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.lib.utils import ImageReader
 from reportlab.platypus import (
+    BaseDocTemplate,
+    Frame,
     HRFlowable,
     Image,
+    PageTemplate,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
@@ -120,6 +123,170 @@ def _scaled_image(raw: bytes, max_w: float, max_h: float) -> Optional[Image]:
     return Image(BytesIO(raw), width=iw * scale, height=ih * scale)
 
 
+# ---------------------------------------------------------------------------
+# Full-page letterhead support
+# ---------------------------------------------------------------------------
+# A letterhead whose aspect ratio is roughly page-shaped (portrait) is treated
+# as a *full-page background*: the document is painted across the whole page and
+# the invoice content is laid into the detected blank middle band — instead of
+# being rendered below a short top banner. A wide/short image keeps banner mode.
+_PAGE_RATIO_MIN = 1.15   # image height / width
+_PAGE_RATIO_MAX = 1.70
+
+
+def _letterhead_is_full_page(raw: Optional[bytes]) -> bool:
+    """True if ``raw`` looks like a whole-page (portrait) letterhead."""
+    if not raw:
+        return False
+    try:
+        iw, ih = ImageReader(BytesIO(raw)).getSize()
+    except Exception:  # noqa: BLE001
+        return False
+    if not iw or not ih:
+        return False
+    return _PAGE_RATIO_MIN <= (ih / iw) <= _PAGE_RATIO_MAX
+
+
+def _largest_blank_band(densities: List[float], threshold: float) -> Optional[Tuple[int, int]]:
+    """Return ``(start, end)`` row indices of the longest contiguous run whose
+    per-row ink density is ``<= threshold``. ``None`` if there's no blank run.
+
+    Pure list arithmetic, so it's unit-testable without any image at all."""
+    best: Optional[Tuple[int, int]] = None
+    best_len = 0
+    start: Optional[int] = None
+    n = len(densities)
+    for y in range(n):
+        if densities[y] <= threshold:
+            if start is None:
+                start = y
+        elif start is not None:
+            if (y - start) > best_len:
+                best_len = y - start
+                best = (start, y)
+            start = None
+    if start is not None and (n - start) > best_len:
+        best = (start, n)
+    return best
+
+
+def _detect_blank_band_fracs(raw: bytes) -> Optional[Tuple[float, float]]:
+    """Find the largest blank horizontal band of a letterhead.
+
+    Returns ``(top_frac, bottom_frac)`` measured from the top as fractions of
+    the image height, or ``None`` when it can't be determined (PIL/numpy absent,
+    or no clearly usable band). The caller falls back to safe default margins.
+    """
+    try:
+        from PIL import Image as _PImage
+        import numpy as _np
+    except Exception:  # noqa: BLE001 — optional deps; degrade gracefully
+        return None
+    try:
+        img = _PImage.open(BytesIO(raw)).convert("RGB")
+    except Exception:  # noqa: BLE001
+        return None
+    # Downscale: ~400 rows of vertical resolution is ample and keeps this fast.
+    if img.height > 400:
+        scale = 400.0 / img.height
+        img = img.resize((max(1, int(img.width * scale)), 400))
+    arr = _np.asarray(img)
+    # "Ink" = a clearly non-white pixel. Thin, faint corner flourishes stay below
+    # the per-row density threshold, so content can still fill most of the page;
+    # dense full-width elements (header rule, footer gradient bar) read as ink.
+    ink = arr.min(axis=2) < 220
+    row_density = [float(v) for v in ink.mean(axis=1)]
+    band = _largest_blank_band(row_density, threshold=0.02)
+    if band is None:
+        return None
+    h = len(row_density)
+    top_frac, bottom_frac = band[0] / h, band[1] / h
+    if (bottom_frac - top_frac) < 0.30:  # too small to be the real content area
+        return None
+    return top_frac, bottom_frac
+
+
+def _full_page_layout(
+    raw: bytes, page_w: float, page_h: float, side_margin: float
+) -> Tuple[Tuple[float, float, float, float], Tuple[float, float, float, float]]:
+    """Compute geometry for a full-page letterhead.
+
+    Returns ``(draw_rect, frame_rect)`` where ``draw_rect`` is where the
+    letterhead image is painted (contain-fit, centred) and ``frame_rect`` is the
+    content frame inside the detected blank band. Both are ``(x, y, w, h)`` in
+    PDF points (origin bottom-left).
+    """
+    try:
+        iw, ih = ImageReader(BytesIO(raw)).getSize()
+    except Exception:  # noqa: BLE001
+        iw, ih = page_w, page_h
+    scale = min(page_w / iw, page_h / ih)
+    dw, dh = iw * scale, ih * scale
+    dx, dy = (page_w - dw) / 2.0, (page_h - dh) / 2.0
+    draw_rect = (dx, dy, dw, dh)
+
+    fracs = _detect_blank_band_fracs(raw)
+    pad = 0.20 * inch
+    if fracs is not None:
+        top_frac, bottom_frac = fracs
+        top_y = (dy + dh) - top_frac * dh - pad
+        bottom_y = (dy + dh) - bottom_frac * dh + pad
+    else:
+        # Safe defaults: clear a typical header/footer if detection isn't possible.
+        top_y = page_h - 2.1 * inch
+        bottom_y = 1.4 * inch
+    fx = dx + side_margin
+    fw = dw - 2 * side_margin
+    return draw_rect, (fx, bottom_y, fw, top_y - bottom_y)
+
+
+def _build_pdf(
+    buf: BytesIO,
+    story: list,
+    *,
+    title: str,
+    author: str,
+    margin: float,
+    full_page: bool,
+    letterhead_png: Optional[bytes] = None,
+    draw_rect: Optional[Tuple[float, float, float, float]] = None,
+    frame_rect: Optional[Tuple[float, float, float, float]] = None,
+) -> None:
+    """Build the PDF into ``buf`` — full-page-letterhead mode or normal mode.
+
+    In full-page mode the letterhead is painted across every page and the story
+    flows inside ``frame_rect``; otherwise a plain ``SimpleDocTemplate`` is used
+    (banner/no-letterhead modes add their own flowables to ``story``).
+    """
+    if full_page and frame_rect is not None and draw_rect is not None:
+        doc = BaseDocTemplate(
+            buf, pagesize=LETTER, leftMargin=0, rightMargin=0,
+            topMargin=0, bottomMargin=0, title=title, author=author,
+        )
+        fx, fy, fw, fh = frame_rect
+        frame = Frame(fx, fy, fw, fh, id="content", leftPadding=0,
+                      rightPadding=0, topPadding=0, bottomPadding=0)
+        dx, dy, dw, dh = draw_rect
+
+        def _paint_letterhead(canvas, _doc):  # noqa: ANN001
+            try:
+                canvas.drawImage(ImageReader(BytesIO(letterhead_png)), dx, dy,
+                                 width=dw, height=dh, mask="auto")
+            except Exception:  # noqa: BLE001 — a bad image must not sink the PDF
+                pass
+
+        doc.addPageTemplates([PageTemplate(id="letterhead", frames=[frame],
+                                           onPage=_paint_letterhead)])
+        doc.build(story)
+        return
+
+    doc = SimpleDocTemplate(
+        buf, pagesize=LETTER, leftMargin=margin, rightMargin=margin,
+        topMargin=margin, bottomMargin=margin, title=title, author=author,
+    )
+    doc.build(story)
+
+
 def _validate(data: InvoiceData) -> None:
     # Company name is only mandatory when there's no letterhead — if one is
     # uploaded, that artwork already carries the company name/contact details,
@@ -169,20 +336,20 @@ def render_invoice_pdf(data: InvoiceData) -> bytes:
 
     sym = data.currency_symbol
     margin = 0.7 * inch
-    content_w = LETTER[0] - 2 * margin  # 7.1" on LETTER
+    page_w, page_h = LETTER
+
+    # A page-shaped letterhead becomes a full-page background; content flows into
+    # its detected blank middle band. A short/wide image stays a top banner.
+    full_page = _letterhead_is_full_page(data.letterhead_png)
+    draw_rect = frame_rect = None
+    if full_page:
+        draw_rect, frame_rect = _full_page_layout(data.letterhead_png, page_w,
+                                                  page_h, margin)
+        content_w = frame_rect[2]
+    else:
+        content_w = page_w - 2 * margin  # 7.1" on LETTER
 
     buf = BytesIO()
-    doc = SimpleDocTemplate(
-        buf,
-        pagesize=LETTER,
-        leftMargin=margin,
-        rightMargin=margin,
-        topMargin=margin,
-        bottomMargin=margin,
-        title=f"Invoice {data.invoice_number}" if data.invoice_number else "Invoice",
-        author=data.from_company,
-    )
-
     base = getSampleStyleSheet()["BodyText"]
 
     def style(name, **kw):
@@ -207,8 +374,10 @@ def render_invoice_pdf(data: InvoiceData) -> bytes:
 
     story: list = []
 
-    # --- Letterhead banner (optional) — user's own stationery header strip ---
-    if data.letterhead_png:
+    # --- Letterhead banner (only when NOT a full-page letterhead) ------------
+    # Full-page letterheads are painted as the page background instead (see
+    # ``_build_pdf``), so here we only add a top banner for short/wide images.
+    if data.letterhead_png and not full_page:
         banner = _scaled_image(data.letterhead_png, max_w=content_w, max_h=1.5 * inch)
         if banner is not None:
             banner.hAlign = "CENTER"
@@ -302,8 +471,11 @@ def render_invoice_pdf(data: InvoiceData) -> bytes:
             _money(sym, li.unit_price),
             _money(sym, li.amount),
         ])
-    items_tbl = Table(rows, colWidths=[3.5 * inch, 0.7 * inch, 1.45 * inch,
-                                       1.45 * inch], repeatRows=1)
+    # Proportional widths so the table always fits the content frame (which is
+    # narrower than the page when a full-page letterhead is in use).
+    items_tbl = Table(rows, colWidths=[content_w * 0.49, content_w * 0.10,
+                                       content_w * 0.205, content_w * 0.205],
+                      repeatRows=1)
     items_tbl.setStyle(TableStyle([
         # header row
         ("BACKGROUND", (0, 0), (-1, 0), HEAD_BG),
@@ -393,7 +565,12 @@ def render_invoice_pdf(data: InvoiceData) -> bytes:
                            style("footer", fontName="Helvetica", fontSize=9,
                                  leading=12, textColor=MUTED, alignment=1)))
 
-    doc.build(story)
+    _build_pdf(
+        buf, story,
+        title=f"Invoice {data.invoice_number}" if data.invoice_number else "Invoice",
+        author=data.from_company, margin=margin, full_page=full_page,
+        letterhead_png=data.letterhead_png, draw_rect=draw_rect, frame_rect=frame_rect,
+    )
     return buf.getvalue()
 
 

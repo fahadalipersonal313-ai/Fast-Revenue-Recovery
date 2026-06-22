@@ -27,6 +27,20 @@ def _png(w=120, h=60, color=(10, 20, 40)) -> bytes:
     return buf.getvalue()
 
 
+def _page_letterhead(w=850, h=1100) -> bytes:
+    """A page-shaped letterhead: header band on top, footer band at the bottom,
+    blank middle (where content should land)."""
+    from PIL import ImageDraw
+
+    img = PImage.new("RGB", (w, h), (255, 255, 255))
+    d = ImageDraw.Draw(img)
+    d.rectangle([0, 0, w, int(h * 0.13)], fill=(40, 80, 160))      # header
+    d.rectangle([0, int(h * 0.92), w, h], fill=(245, 140, 30))     # footer bar
+    buf = BytesIO()
+    img.save(buf, "PNG")
+    return buf.getvalue()
+
+
 # --- quote generator -------------------------------------------------------
 def _quote(**over) -> qg.QuoteData:
     base = dict(from_company="Test Co", customer_name="Acme Ltd", quote_number="Q-1",
@@ -105,6 +119,47 @@ def test_invoice_company_still_required_without_letterhead():
                           line_items=[ig.LineItem("x", 1, 10.0)])
     with pytest.raises(ig.InvoiceError):
         ig.render_invoice_pdf(data)
+
+
+# --- full-page letterhead --------------------------------------------------
+def test_letterhead_full_page_detection():
+    assert ig._letterhead_is_full_page(_page_letterhead()) is True   # portrait page
+    assert ig._letterhead_is_full_page(_png(600, 120)) is False      # wide banner
+    assert ig._letterhead_is_full_page(b"") is False
+
+
+def test_largest_blank_band_picks_longest_run():
+    # ink, then a long blank run, then ink again -> the middle run wins.
+    dens = [0.5, 0.5, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0]
+    assert ig._largest_blank_band(dens, threshold=0.02) == (2, 6)
+    assert ig._largest_blank_band([0.9, 0.9], threshold=0.02) is None
+
+
+def test_detect_blank_band_is_between_header_and_footer():
+    fracs = ig._detect_blank_band_fracs(_page_letterhead())
+    assert fracs is not None
+    top, bottom = fracs
+    assert top < 0.2 and bottom > 0.85        # spans the blank middle
+    assert (bottom - top) > 0.6
+
+
+def test_full_page_layout_frame_sits_inside_blank_band():
+    draw, frame = ig._full_page_layout(_page_letterhead(), 612, 792, 0.7 * 72)
+    fx, fy, fw, fh = frame
+    assert fx > 0 and fw > 0 and fh > 3 * 72   # a usefully tall content area
+    assert fy > 0.5 * 72                       # clear of the footer band
+
+
+def test_invoice_renders_on_full_page_letterhead():
+    data = ig.InvoiceData(from_company="", customer_name="Cust",
+                          line_items=[ig.LineItem("Consulting", 3, 400.0)],
+                          letterhead_png=_page_letterhead())
+    assert ig.render_invoice_pdf(data)[:5] == b"%PDF-"
+
+
+def test_quote_renders_on_full_page_letterhead():
+    data = _quote(from_company="", letterhead_png=_page_letterhead())
+    assert qg.render_quote_pdf(data)[:5] == b"%PDF-"
 
 
 # --- bulk quote ------------------------------------------------------------

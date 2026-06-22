@@ -29,7 +29,6 @@ from reportlab.lib.units import inch
 from reportlab.platypus import (
     HRFlowable,
     Paragraph,
-    SimpleDocTemplate,
     Spacer,
     Table,
     TableStyle,
@@ -40,6 +39,9 @@ from src.invoice_generator import (  # noqa: F401  (re-exported for callers)
     CustomField,
     InvoiceError,
     LineItem,
+    _build_pdf,
+    _full_page_layout,
+    _letterhead_is_full_page,
     _money,
     _scaled_image,
 )
@@ -130,20 +132,18 @@ def render_quote_pdf(data: QuoteData) -> bytes:
 
     sym = data.currency_symbol
     margin = 0.7 * inch
-    content_w = LETTER[0] - 2 * margin
+    page_w, page_h = LETTER
+
+    full_page = _letterhead_is_full_page(data.letterhead_png)
+    draw_rect = frame_rect = None
+    if full_page:
+        draw_rect, frame_rect = _full_page_layout(data.letterhead_png, page_w,
+                                                  page_h, margin)
+        content_w = frame_rect[2]
+    else:
+        content_w = page_w - 2 * margin
 
     buf = BytesIO()
-    doc = SimpleDocTemplate(
-        buf,
-        pagesize=LETTER,
-        leftMargin=margin,
-        rightMargin=margin,
-        topMargin=margin,
-        bottomMargin=margin,
-        title=f"Quotation {data.quote_number}" if data.quote_number else "Quotation",
-        author=data.from_company,
-    )
-
     base = getSampleStyleSheet()["BodyText"]
 
     def style(name, **kw):
@@ -168,7 +168,7 @@ def render_quote_pdf(data: QuoteData) -> bytes:
 
     story: list = []
 
-    if data.letterhead_png:
+    if data.letterhead_png and not full_page:
         banner = _scaled_image(data.letterhead_png, max_w=content_w, max_h=1.5 * inch)
         if banner is not None:
             banner.hAlign = "CENTER"
@@ -259,8 +259,9 @@ def render_quote_pdf(data: QuoteData) -> bytes:
             _money(sym, li.unit_price),
             _money(sym, li.amount),
         ])
-    items_tbl = Table(rows, colWidths=[3.5 * inch, 0.7 * inch, 1.45 * inch,
-                                       1.45 * inch], repeatRows=1)
+    items_tbl = Table(rows, colWidths=[content_w * 0.49, content_w * 0.10,
+                                       content_w * 0.205, content_w * 0.205],
+                      repeatRows=1)
     items_tbl.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), HEAD_BG),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
@@ -341,7 +342,12 @@ def render_quote_pdf(data: QuoteData) -> bytes:
                            style("footer", fontName="Helvetica", fontSize=9,
                                  leading=12, textColor=MUTED, alignment=1)))
 
-    doc.build(story)
+    _build_pdf(
+        buf, story,
+        title=f"Quotation {data.quote_number}" if data.quote_number else "Quotation",
+        author=data.from_company, margin=margin, full_page=full_page,
+        letterhead_png=data.letterhead_png, draw_rect=draw_rect, frame_rect=frame_rect,
+    )
     return buf.getvalue()
 
 
