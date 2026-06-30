@@ -8,23 +8,31 @@ Design rules enforced here:
 * Any failure (no key, no library, network error) returns ``None`` so callers
   fall back to deterministic templates/rules.
 
-Two providers are supported, selected by ``settings.ai_provider``:
+Three providers are supported, selected by ``settings.ai_provider``:
 
 * ``gemini`` (default) — Google's Gemini API, which has a generous free tier
   (Gemini 2.0 Flash), so the app can ship with AI polishing on at $0 cost.
+* ``glm`` — Zhipu/Z.ai's GLM API. Its ``glm-4.5-flash`` / ``glm-4.7-flash``
+  models are free (rate-limited). The endpoint is OpenAI-compatible, so we call
+  it over plain HTTP (``requests``) — no extra SDK needed.
 * ``anthropic`` — Claude, for users who already have an API key.
 
-Both providers implement the exact same two functions below, so the rest of
-the app (``communication_agent.py``) never needs to know which one is active.
+All providers implement the exact same functions below, so the rest of the app
+(``communication_agent.py``) never needs to know which one is active.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import re
 from typing import Dict, List, Optional
 
 from .config import Settings
+
+# Z.ai's OpenAI-compatible base URL. Override with GLM_BASE_URL for the China
+# endpoint (https://open.bigmodel.cn/api/paas/v4) or a proxy.
+_GLM_BASE_URL = os.environ.get("GLM_BASE_URL", "https://api.z.ai/api/paas/v4").rstrip("/")
 
 _REFINE_SYSTEM_PROMPT = (
     "You refine debt-collection and sales follow-up messages for a small "
@@ -49,6 +57,14 @@ def ai_available(settings: Settings) -> bool:
     if settings.ai_provider == "gemini":
         try:
             from google import genai  # noqa: F401
+        except Exception:
+            return False
+        return True
+    if settings.ai_provider == "glm":
+        # OpenAI-compatible REST call over requests (a core dependency), so the
+        # only requirement beyond the key is that requests imports.
+        try:
+            import requests  # noqa: F401
         except Exception:
             return False
         return True
@@ -137,11 +153,52 @@ def _gemini_complete(system: str, prompt: str, settings: Settings, max_tokens: i
 
 
 # ---------------------------------------------------------------------------
+# GLM backend (Z.ai, free "flash" models, OpenAI-compatible REST)
+# ---------------------------------------------------------------------------
+def _glm_complete(system: str, prompt: str, settings: Settings, max_tokens: int) -> Optional[str]:
+    """Call Z.ai's OpenAI-compatible chat endpoint. Returns the text or None.
+
+    Fail-safe: any missing key, network error, non-200 status or unexpected
+    payload yields None, so the caller falls back to deterministic templates.
+    """
+    key = settings.ai_api_key
+    if not key:
+        return None
+    try:
+        import requests
+    except Exception:
+        return None
+    try:
+        resp = requests.post(
+            f"{_GLM_BASE_URL}/chat/completions",
+            headers={"Authorization": f"Bearer {key}",
+                     "Content-Type": "application/json"},
+            json={
+                "model": settings.ai_model_resolved,
+                "messages": [{"role": "system", "content": system},
+                             {"role": "user", "content": prompt}],
+                "max_tokens": max_tokens,
+                "temperature": 0.4,
+            },
+            timeout=30,
+        )
+        if resp.status_code != 200:
+            return None
+        data = resp.json()
+        text = (data["choices"][0]["message"]["content"] or "").strip()
+        return text or None
+    except Exception:  # noqa: BLE001 — any failure falls back to templates
+        return None
+
+
+# ---------------------------------------------------------------------------
 # Public, provider-agnostic API
 # ---------------------------------------------------------------------------
 def _complete(system: str, prompt: str, settings: Settings, max_tokens: int) -> Optional[str]:
     if settings.ai_provider == "gemini":
         return _gemini_complete(system, prompt, settings, max_tokens)
+    if settings.ai_provider == "glm":
+        return _glm_complete(system, prompt, settings, max_tokens)
     return _anthropic_complete(system, prompt, settings, max_tokens)
 
 

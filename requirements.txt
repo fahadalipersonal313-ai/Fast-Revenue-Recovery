@@ -11,8 +11,11 @@ cryptography>=42.0
 # fail with CERTIFICATE_VERIFY_FAILED on some Windows machines.
 truststore>=0.9
 # Optional: only needed if you enable AI message improvement.
-# Gemini is the default provider (free tier). Anthropic is supported too.
+# Gemini is the default provider (free tier). GLM (Z.ai, free flash models, via
+# its OpenAI-compatible REST endpoint over requests) and Anthropic are also
+# supported.
 google-genai>=0.3
 anthropic>=0.40
+requests>=2.31
 # PDF rendering for the Invoice Generator page (pure Python, no system deps).
 reportlab>=4.0

@@ -95,7 +95,8 @@ class Settings:
     lead_follow_up_days: int = 3
 
     # AI is optional. The app must work fully with this disabled.
-    # Provider: "gemini" (free tier, default) or "anthropic" (paid).
+    # Provider: "gemini" (free tier, default), "glm" (Z.ai, also has free
+    # "flash" models) or "anthropic" (paid).
     ai_enabled: bool = field(default_factory=lambda: _env_bool("AI_ENABLED", False))
     ai_provider: str = field(
         default_factory=lambda: os.environ.get("AI_PROVIDER", "gemini").strip().lower()
@@ -132,6 +133,8 @@ class Settings:
         """
         if self.ai_provider == "gemini":
             return os.environ.get("GEMINI_API_KEY") or os.environ.get("AI_API_KEY")
+        if self.ai_provider == "glm":
+            return os.environ.get("GLM_API_KEY") or os.environ.get("AI_API_KEY")
         return os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("AI_API_KEY")
 
     @property
@@ -143,14 +146,29 @@ class Settings:
         id is ignored in favour of the provider default, so switching providers
         never silently sends an incompatible model name to the API.
         """
-        default = "gemini-2.5-flash-lite" if self.ai_provider == "gemini" else "claude-opus-4-8"
+        defaults = {
+            "gemini": "gemini-2.5-flash-lite",
+            "glm": "glm-4.5-flash",          # Z.ai's free, fast text model
+            "anthropic": "claude-opus-4-8",
+        }
+        provider = self.ai_provider if self.ai_provider in defaults else "gemini"
+        default = defaults[provider]
         model = (self.ai_model or "").strip()
         if not model:
             return default
-        is_gemini_model = model.lower().startswith("gemini")
-        if self.ai_provider == "gemini" and not is_gemini_model:
-            return default
-        if self.ai_provider != "gemini" and is_gemini_model:
+        # If the configured id clearly belongs to a *different* provider (a
+        # leftover after switching providers), ignore it and use the default so
+        # we never send an incompatible model name to the API. Unknown prefixes
+        # are passed through, preserving the freedom to set a custom model.
+        owner = None
+        low = model.lower()
+        if low.startswith("gemini"):
+            owner = "gemini"
+        elif low.startswith("glm"):
+            owner = "glm"
+        elif low.startswith("claude"):
+            owner = "anthropic"
+        if owner is not None and owner != provider:
             return default
         return model
 

@@ -115,6 +115,16 @@ PYTHONPATH="D:\revenue-recovery-desk\.venv\Lib\site-packages" \
     already-imported module doesn't. Fix: Streamlit Cloud → **Manage app** →
     **⋮ → Clear cache**, then **⋮ → Reboot app** (a plain rerun isn't enough,
     it needs a process restart).
+- **GLM (Z.ai) added as 3rd AI provider** (2026-06-30): alongside `gemini`
+  (default) and `anthropic`. GLM's `glm-4.5-flash`/`glm-4.7-flash` are free
+  (rate-limited). The endpoint is OpenAI-compatible, so `_glm_complete` in
+  `ai_helper.py` calls `{GLM_BASE_URL}/chat/completions` over `requests` (no new
+  SDK; default base `https://api.z.ai/api/paas/v4`, override via `GLM_BASE_URL`
+  for the China endpoint). Key read from `GLM_API_KEY` (or `AI_API_KEY`); never
+  persisted. `config.ai_model_resolved` now maps 3 providers and ignores a model
+  id belonging to another provider (default `glm-4.5-flash`). Fully fail-safe
+  (no key / non-200 / network error / junk payload → `None` → templates). 9 new
+  tests in `tests/test_glm_provider.py`; suite 183 passing.
 - Fixed logout button visibility (moved to top of sidebar, full-width).
 - **UI redesign → premium SaaS look** (`src/ui.py` rewritten, `app.py` restyled):
   dark slate nav rail, single indigo accent (`#4f46e5`), flat buttons, clean KPI

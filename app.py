@@ -1319,14 +1319,14 @@ def page_settings() -> None:
         q_int = c4.number_input("Quote follow-up days", value=settings.quote_follow_up_days, min_value=1)
         l_int = c5.number_input("Lead follow-up days", value=settings.lead_follow_up_days, min_value=1)
         ai_enabled = st.checkbox("🤖 Enable AI message polishing", value=settings.ai_enabled)
-        provider_options = ["gemini", "anthropic"]
+        provider_options = ["gemini", "glm", "anthropic"]
         provider_index = provider_options.index(settings.ai_provider) if settings.ai_provider in provider_options else 0
         ai_provider = st.selectbox(
             "AI provider", provider_options, index=provider_index,
-            help="Gemini has a free tier (recommended). Anthropic requires a paid key.",
+            help="Gemini and GLM (Z.ai) both have free tiers. Anthropic requires a paid key.",
         )
-        st.caption("The AI key is read only from GEMINI_API_KEY / ANTHROPIC_API_KEY / AI_API_KEY "
-                   "environment variables — never stored here.")
+        st.caption("The AI key is read only from GEMINI_API_KEY / GLM_API_KEY / "
+                   "ANTHROPIC_API_KEY / AI_API_KEY environment variables — never stored here.")
         email_draft_enabled = st.checkbox(
             "📧 Save a draft email when I approve an item", value=settings.email_draft_enabled,
             help="Add your email credentials below to turn this on.",
@@ -1356,7 +1356,8 @@ def page_settings() -> None:
         st.success(f"AI is active — provider: **{settings.ai_provider}**, "
                     f"model: **{settings.ai_model_resolved}**.")
     elif settings.ai_enabled and not settings.ai_api_key:
-        key_var = "GEMINI_API_KEY" if settings.ai_provider == "gemini" else "ANTHROPIC_API_KEY"
+        key_var = {"gemini": "GEMINI_API_KEY", "glm": "GLM_API_KEY"}.get(
+            settings.ai_provider, "ANTHROPIC_API_KEY")
         st.warning(f"AI is enabled but no {key_var} (or AI_API_KEY) is set — "
                    "running on reliable templates.")
     else:
