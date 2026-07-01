@@ -1121,8 +1121,23 @@ def page_approvals() -> None:
             #   1) Fine-tune — refine exactly what's in the box (optional nudge).
             #   2) Tone variants — gentle / neutral / firm rewrites to pick from.
             # Both keep the manual editor above; nothing is auto-applied.
-            if _ai_pro() and _ai_configured():
+            # Free tier gets gating.FREE_AI_REFINE_LIMIT_PER_MONTH refines/month
+            # (Fine-tune + tone variants each count as 1); Pro is unlimited (the
+            # paid "Phase 2" tier). Each *successful* AI action consumes one.
+            user = _require_login()
+            if _ai_configured() and (gating.is_pro(user) or gating.ai_refine_allowed(user, mem)):
                 base_msg = edited or item["suggested_message"] or ""
+
+                # Free-tier usage meter (Pro is unlimited, so shows nothing).
+                remaining = gating.ai_refines_remaining(user, mem)
+                if remaining is not None:
+                    used = gating.ai_refines_this_month(mem)
+                    st.caption(
+                        f"✨ Free plan — **{used}/{gating.FREE_AI_REFINE_LIMIT_PER_MONTH}** "
+                        f"AI refines used this month ({remaining} left). "
+                        "[Upgrade to Pro →](https://revenue-recovery-desk.netlify.app/#pricing) "
+                        "for unlimited."
+                    )
 
                 # 1) Fine-tune the current draft with an optional instruction.
                 ftkey = f"finetune_{item['id']}"
@@ -1139,6 +1154,7 @@ def page_approvals() -> None:
                             settings, instruction,
                         )
                     if refined and refined.strip():
+                        gating.record_ai_refine(user, mem)  # counts against Free cap
                         st.session_state[ftkey] = refined.strip()
                     else:
                         st.session_state[ftkey] = None
@@ -1167,6 +1183,7 @@ def page_approvals() -> None:
                     with st.spinner("Generating tone variants…"):
                         variants = message_tone_variants(base_msg, settings)
                     if variants:
+                        gating.record_ai_refine(user, mem)  # counts against Free cap
                         st.session_state[vkey] = variants
                     else:
                         st.session_state[vkey] = {}
@@ -1185,8 +1202,16 @@ def page_approvals() -> None:
                                 st.session_state[pending_key] = text
                                 st.session_state.pop(vkey, None)
                                 st.rerun()
-            elif not _ai_pro():
-                # Show the capability (don't hide it) — invisible features never convert.
+            elif _ai_configured() and not gating.is_pro(user):
+                # Free, AI configured, but the monthly refine cap is used up.
+                st.caption(
+                    f"✨ You've used all **{gating.FREE_AI_REFINE_LIMIT_PER_MONTH}** free AI "
+                    "refines this month. "
+                    "[Upgrade to Pro →](https://revenue-recovery-desk.netlify.app/#pricing) "
+                    "for unlimited — the manual editor above always works."
+                )
+            elif not gating.is_pro(user):
+                # AI isn't configured at all — show the capability as an upsell.
                 st.caption(
                     "✨ **Pro:** let AI fine-tune this exact draft (shorter, warmer, "
                     "firmer…) and suggest gentle / neutral / firm variants. "

@@ -70,6 +70,45 @@ class AgentMemory:
             )
 
     # ------------------------------------------------------------------
+    # AI refine usage — per-tenant monthly counter for the Free-tier cap on
+    # interactive AI refines (see gating.py). Stored as a month->count JSON map
+    # in the settings KV table so it needs no schema change.
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _current_month_key() -> str:
+        from datetime import datetime
+        return datetime.utcnow().strftime("%Y-%m")
+
+    def _ai_usage_map(self) -> Dict[str, int]:
+        rows = db.query("SELECT value FROM settings WHERE key = 'ai_refine_usage'",
+                        path=self.path)
+        if not rows:
+            return {}
+        try:
+            data = json.loads(rows[0]["value"])
+            return data if isinstance(data, dict) else {}
+        except (json.JSONDecodeError, TypeError):
+            return {}
+
+    def ai_refine_usage_this_month(self) -> int:
+        """How many interactive AI refines were used in the current month."""
+        return int(self._ai_usage_map().get(self._current_month_key(), 0))
+
+    def increment_ai_refine_usage(self) -> int:
+        """Count one interactive AI refine for the current month; returns the
+        new running total for the month."""
+        usage = self._ai_usage_map()
+        month = self._current_month_key()
+        usage[month] = int(usage.get(month, 0)) + 1
+        db.execute(
+            "INSERT INTO settings(key, value) VALUES ('ai_refine_usage', ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (json.dumps(usage),),
+            path=self.path,
+        )
+        return usage[month]
+
+    # ------------------------------------------------------------------
     # Per-tenant email credentials (encrypted at rest, never plain text)
     # ------------------------------------------------------------------
     def save_email_credentials(self, address: str, app_password: str) -> None:

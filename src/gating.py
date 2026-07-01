@@ -30,6 +30,9 @@ if TYPE_CHECKING:  # avoid runtime circulars
 FREE_RECORD_LIMIT_PER_MONTH = 50      # invoices + quotes + leads combined
 FREE_CLIENT_LIMIT = 10                # distinct customer names
 FREE_RECOMMENDATION_DAILY_LIMIT = 5   # top-N shown to free users
+FREE_AI_REFINE_LIMIT_PER_MONTH = 10   # interactive AI refines (fine-tune +
+                                      # tone variants) per month on Free; Pro is
+                                      # unlimited. Paid "Phase 2" tier tunes this.
 
 
 def is_pro(user: "User") -> bool:
@@ -79,6 +82,35 @@ def clients_remaining(user: "User", mem: "AgentMemory") -> int | None:
     if is_pro(user):
         return None
     return FREE_CLIENT_LIMIT - client_count(mem)
+
+
+def ai_refines_this_month(mem: "AgentMemory") -> int:
+    """Interactive AI refines used this month (Fine-tune + tone variants)."""
+    return mem.ai_refine_usage_this_month()
+
+
+def ai_refine_allowed(user: "User", mem: "AgentMemory") -> bool:
+    """Can this user run another interactive AI refine right now? Pro is
+    unlimited; Free is capped at FREE_AI_REFINE_LIMIT_PER_MONTH per month."""
+    if is_pro(user):
+        return True
+    return ai_refines_this_month(mem) < FREE_AI_REFINE_LIMIT_PER_MONTH
+
+
+def ai_refines_remaining(user: "User", mem: "AgentMemory") -> int | None:
+    """Refines left this month. None for Pro (unlimited); 0 when a Free user is
+    at the cap."""
+    if is_pro(user):
+        return None
+    return max(0, FREE_AI_REFINE_LIMIT_PER_MONTH - ai_refines_this_month(mem))
+
+
+def record_ai_refine(user: "User", mem: "AgentMemory") -> None:
+    """Count one interactive AI refine against the Free monthly cap. No-op for
+    Pro so the counter reflects only Free-tier consumption."""
+    if is_pro(user):
+        return
+    mem.increment_ai_refine_usage()
 
 
 def can_upload_records(user: "User", mem: "AgentMemory",

@@ -133,12 +133,27 @@ PYTHONPATH="D:\revenue-recovery-desk\.venv\Lib\site-packages" \
     and the free plan also caps monthly usage (user reports ~10 AI refines/mo),
     so heavy use falls back to templates. → drives the planned free-tier
     AI-refine cap below.
-- **PLANNED — free-tier AI usage cap + paid Phase 2** (2026-07-01, not yet
-  built): gate AI refinements to ~10/month per tenant on the free plan (show
-  "X/10 used", fall back to templates at the cap), with a paid "Phase 2" tier
-  unlocking more. Needs a per-tenant monthly AI-usage counter in `memory` +
-  a check in the AI-refine call sites. Scope (what counts as one "refine") to be
-  confirmed with the user before building.
+- **Free-tier AI-refine cap (10/month) + paid Phase 2** (2026-07-01, done):
+  interactive AI in the Approval Queue is now open to **Free** users too, capped
+  at `gating.FREE_AI_REFINE_LIMIT_PER_MONTH = 10` refines/month; **Pro is
+  unlimited** (the paid "Phase 2" tier — billing not built yet, just the tier
+  gate). *Both* AI actions count as 1 each: **Fine-tune this draft** and
+  **Suggest tone variants** (decided by default after the question tool failed;
+  confirm with user if they wanted only Fine-tune to count). Pieces:
+  - `memory.ai_refine_usage_this_month()` / `increment_ai_refine_usage()` — a
+    month→count JSON map stored in the `settings` KV table (no schema change);
+    month key is UTC `%Y-%m`.
+  - `gating.ai_refine_allowed(user, mem)` (Pro→True, Free→under cap),
+    `ai_refines_remaining` (None for Pro), `record_ai_refine` (no-op for Pro so
+    the counter is Free-only usage).
+  - `app.py` Approval Queue: the interactive-AI block now shows for
+    `_ai_configured() and (is_pro or ai_refine_allowed)`; a Free usage meter
+    ("X/10 used, N left" + upgrade link); each *successful* Fine-tune / tone
+    call `gating.record_ai_refine`. At the cap Free users get an upgrade upsell
+    (manual editor always works); AI-not-configured and Pro-AI-off keep their
+    existing hints. No `st.rerun()` after a refine (would drop the just-produced
+    draft when the 10th use flips the block to the cap branch).
+  - 5 new tests in `tests/test_ai_refine_gating.py`; suite 193 passing.
 - Fixed logout button visibility (moved to top of sidebar, full-width).
 - **UI redesign → premium SaaS look** (`src/ui.py` rewritten, `app.py` restyled):
   dark slate nav rail, single indigo accent (`#4f46e5`), flat buttons, clean KPI
