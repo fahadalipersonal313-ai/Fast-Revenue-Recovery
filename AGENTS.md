@@ -125,6 +125,20 @@ PYTHONPATH="D:\revenue-recovery-desk\.venv\Lib\site-packages" \
   id belonging to another provider (default `glm-4.5-flash`). Fully fail-safe
   (no key / non-200 / network error / junk payload → `None` → templates). 9 new
   tests in `tests/test_glm_provider.py`; suite 183 passing.
+  - **To activate on Streamlit Cloud**: set app **Secrets** `GLM_API_KEY`,
+    `AI_ENABLED="true"`, `AI_PROVIDER="glm"` (optional `GLM_BASE_URL` for the
+    China endpoint), then **Clear cache + Reboot**. Verify via Settings →
+    🤖 AI status showing *provider: glm, model: glm-4.5-flash*. A Z.ai key is
+    free (signup only, no card); free flash models are rate-limited (~1 req/s),
+    and the free plan also caps monthly usage (user reports ~10 AI refines/mo),
+    so heavy use falls back to templates. → drives the planned free-tier
+    AI-refine cap below.
+- **PLANNED — free-tier AI usage cap + paid Phase 2** (2026-07-01, not yet
+  built): gate AI refinements to ~10/month per tenant on the free plan (show
+  "X/10 used", fall back to templates at the cap), with a paid "Phase 2" tier
+  unlocking more. Needs a per-tenant monthly AI-usage counter in `memory` +
+  a check in the AI-refine call sites. Scope (what counts as one "refine") to be
+  confirmed with the user before building.
 - Fixed logout button visibility (moved to top of sidebar, full-width).
 - **UI redesign → premium SaaS look** (`src/ui.py` rewritten, `app.py` restyled):
   dark slate nav rail, single indigo accent (`#4f46e5`), flat buttons, clean KPI
