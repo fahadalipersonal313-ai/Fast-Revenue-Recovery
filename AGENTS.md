@@ -262,6 +262,36 @@ PYTHONPATH="D:\revenue-recovery-desk\.venv\Lib\site-packages" \
   top_center/top_right), optional signature bottom-right, mandatory `from_company`,
   optional `from_email`/`from_address`/`from_phone`.
 
+## Session note (2026-07-01) — AI draft-refine gap + strategic review
+- **User-reported issue**: with AI enabled they can *manually* edit a draft in the
+  Approval Queue but get **no AI "fine-tune this draft" option**. They want BOTH.
+- **Root cause (confirmed in code)**:
+  - Approval Queue (`app.py` ~1102–1133) exposes only a manual `text_area`
+    ("✏️ Message (edit freely)") + an **✨ Suggest tone variants** button
+    (`message_tone_variants` → gentle/neutral/firm). There is **no button that
+    runs `ai_helper.improve_message` on the user's current edited text** — i.e.
+    no "refine/fine-tune exactly this draft" action. `improve_message` exists and
+    is already used *automatically* at generation time in `communication_agent.py`,
+    but is **not exposed interactively** in the queue.
+  - Both AI actions are gated by `_ai_unlocked()` = `gating.is_pro(user) AND
+    ai_available(settings)` (`app.py:206`). So a **Free-tier** user with AI
+    enabled sees *only* the manual editor — no tone variants, no refine. This is
+    the most likely reason the option "isn't there" for the reporter. AI polish
+    at generation time is provider-side (`settings.ai_active`) and NOT tier-gated,
+    so drafts may already be AI-polished even though the interactive controls are
+    hidden — a confusing split.
+- **Planned fix (NOT yet implemented — user asked for plan first)**: add an
+  interactive **"✨ Fine-tune this draft"** button next to the editor that calls
+  `improve_message(edited_text, tone_hint, settings)` and writes the result back
+  via the same deferred `apply_msg_{id}` / `pending_key` pattern used by tone
+  variants (write to session_state BEFORE the text_area is instantiated next run).
+  Add optional tone/instruction input. Decide tier policy: either surface a
+  clear upsell for Free, or allow a limited number of AI refines on Free.
+- A full **product/UX/AI/roadmap strategic review** was delivered in chat this
+  session (usability ~6.5/10, UI ~7/10, usefulness ~7.5/10; top gaps: no real
+  sending, no payment-link/reconciliation, thin analytics, AI split-brain,
+  onboarding friction). Concrete phased plan proposed — see chat transcript.
+
 ## Open roadmap (proposed) — recommended order
 1. ~~Metrics layer~~ — **done**.
 2. **Module dashboards + mega dashboard**: turn per-type pages into real module
