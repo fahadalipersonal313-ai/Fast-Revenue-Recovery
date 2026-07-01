@@ -42,6 +42,7 @@ from src.approval_engine import (
 from src.ai_helper import (
     ai_available,
     classify_reply,
+    improve_message,
     message_tone_variants,
 )
 from src.reply_actions import describe_classification
@@ -204,8 +205,18 @@ def _goto(page_label: str) -> None:
 
 
 def _ai_unlocked() -> bool:
-    """AI features only appear when the user is on Pro AND AI is configured."""
+    """AI features are fully usable when the user is on Pro AND AI is configured."""
     return gating.is_pro(_require_login()) and ai_available(get_settings())
+
+
+def _ai_pro() -> bool:
+    """Is this user on the Pro plan (the tier that unlocks interactive AI)?"""
+    return gating.is_pro(_require_login())
+
+
+def _ai_configured() -> bool:
+    """Is an AI provider enabled with a working key/SDK, regardless of tier?"""
+    return ai_available(get_settings())
 
 
 # ---------------------------------------------------------------------------
@@ -1105,13 +1116,56 @@ def page_approvals() -> None:
             st.code(edited or item["suggested_message"] or "", language="text")
             st.caption("👉 After approving, copy this and send it yourself, then **Mark completed**.")
 
-            # --- AI tone variants: rewrite the message gentle / neutral / firm ---
-            if _ai_unlocked():
+            # --- AI draft assist: fine-tune THIS draft + tone variants ----------
+            # Two AI actions on the *current* editor text:
+            #   1) Fine-tune — refine exactly what's in the box (optional nudge).
+            #   2) Tone variants — gentle / neutral / firm rewrites to pick from.
+            # Both keep the manual editor above; nothing is auto-applied.
+            if _ai_pro() and _ai_configured():
+                base_msg = edited or item["suggested_message"] or ""
+
+                # 1) Fine-tune the current draft with an optional instruction.
+                ftkey = f"finetune_{item['id']}"
+                fc = st.columns([3, 1])
+                instruction = fc[0].text_input(
+                    "✨ Fine-tune with AI — tell it how (optional)",
+                    key=f"fti_{item['id']}",
+                    placeholder="e.g. shorter · warmer · more formal · mention the deadline",
+                )
+                if fc[1].button("Fine-tune", key=f"ftb_{item['id']}"):
+                    with st.spinner("Refining this draft…"):
+                        refined = improve_message(
+                            base_msg, "polite, professional and warm",
+                            settings, instruction,
+                        )
+                    if refined and refined.strip():
+                        st.session_state[ftkey] = refined.strip()
+                    else:
+                        st.session_state[ftkey] = None
+                        st.warning("Couldn't refine right now — the free AI tier may be "
+                                   "rate-limited (try again in a minute) or out of quota. "
+                                   "Your draft above still works.")
+                refined = st.session_state.get(ftkey)
+                if refined:
+                    st.markdown("**✨ AI-refined draft:**")
+                    st.info(refined)
+                    rc = st.columns(2)
+                    if rc[0].button("✅ Use this version", key=f"ftu_{item['id']}"):
+                        # Defer the write to the next run, before the text widget
+                        # is instantiated (Streamlit forbids writing a live key).
+                        st.session_state[pending_key] = refined
+                        st.session_state.pop(ftkey, None)
+                        st.rerun()
+                    if rc[1].button("↩️ Keep my version", key=f"ftd_{item['id']}"):
+                        st.session_state.pop(ftkey, None)
+                        st.rerun()
+
+                # 2) Tone variants — gentle / neutral / firm rewrites.
                 vkey = f"variants_{item['id']}"
-                if st.button("✨ Suggest tone variants (gentle / neutral / firm)",
+                if st.button("🎭 Suggest tone variants (gentle / neutral / firm)",
                              key=f"tv_{item['id']}"):
                     with st.spinner("Generating tone variants…"):
-                        variants = message_tone_variants(edited or item["suggested_message"] or "", settings)
+                        variants = message_tone_variants(base_msg, settings)
                     if variants:
                         st.session_state[vkey] = variants
                     else:
@@ -1131,6 +1185,18 @@ def page_approvals() -> None:
                                 st.session_state[pending_key] = text
                                 st.session_state.pop(vkey, None)
                                 st.rerun()
+            elif not _ai_pro():
+                # Show the capability (don't hide it) — invisible features never convert.
+                st.caption(
+                    "✨ **Pro:** let AI fine-tune this exact draft (shorter, warmer, "
+                    "firmer…) and suggest gentle / neutral / firm variants. "
+                    "[Upgrade to Pro →](https://revenue-recovery-desk.netlify.app/#pricing)"
+                )
+            else:  # Pro, but AI is switched off or has no key
+                st.caption(
+                    "✨ Turn on **AI message polishing** in ⚙️ Settings to fine-tune this "
+                    "draft and generate tone variants. The manual editor above always works."
+                )
 
             if settings.email_draft_active:
                 known_email = mem.get_customer_email(item["customer_name"])
@@ -1362,6 +1428,23 @@ def page_settings() -> None:
                    "running on reliable templates.")
     else:
         st.info("AI is off. The app uses reliable built-in templates (perfectly fine!).")
+
+    # Live probe: confirm the key actually works without generating a real document.
+    if ai_available(settings):
+        if st.button("🔌 Test AI connection", key="test_ai_conn"):
+            with st.spinner("Contacting the AI provider…"):
+                probe = improve_message(
+                    "Hi, this is a quick connection test — please rephrase this sentence.",
+                    "neutral", settings,
+                )
+            if probe:
+                st.success("✅ AI responded successfully — fine-tuning and tone "
+                           "variants are ready to use.")
+                st.caption(f"Sample reply: {probe[:160]}")
+            else:
+                st.error("❌ No response from the AI provider. The key may be invalid, "
+                         "rate-limited, or out of today's quota — the app stays on "
+                         "reliable templates until it recovers.")
 
     st.divider()
     st.markdown("##### 📧 Email draft status")

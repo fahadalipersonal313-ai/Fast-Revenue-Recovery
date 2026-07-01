@@ -250,7 +250,7 @@ PYTHONPATH="D:\revenue-recovery-desk\.venv\Lib\site-packages" \
 
 ## Current state (2026-07-01)
 - **Git**: `main` + `claude/new-session-dnhaay` both at `9b62cca`.
-- **Tests**: **183 passing** (pytest -q, no failures).
+- **Tests**: **188 passing** (pytest -q, no failures).
 - **AI providers**: `gemini` (default, free), `glm` (Z.ai, free flash models),
   `anthropic` (paid). Secrets: `GEMINI_API_KEY` / `GLM_API_KEY` / `ANTHROPIC_API_KEY`
   / `AI_API_KEY`; `AI_PROVIDER`; `AI_ENABLED`; `GLM_BASE_URL` (optional, for
@@ -280,13 +280,27 @@ PYTHONPATH="D:\revenue-recovery-desk\.venv\Lib\site-packages" \
     at generation time is provider-side (`settings.ai_active`) and NOT tier-gated,
     so drafts may already be AI-polished even though the interactive controls are
     hidden — a confusing split.
-- **Planned fix (NOT yet implemented — user asked for plan first)**: add an
-  interactive **"✨ Fine-tune this draft"** button next to the editor that calls
-  `improve_message(edited_text, tone_hint, settings)` and writes the result back
-  via the same deferred `apply_msg_{id}` / `pending_key` pattern used by tone
-  variants (write to session_state BEFORE the text_area is instantiated next run).
-  Add optional tone/instruction input. Decide tier policy: either surface a
-  clear upsell for Free, or allow a limited number of AI refines on Free.
+- **Phase 1 — DONE (2026-07-01)**: interactive **"✨ Fine-tune this draft"**
+  shipped in the Approval Queue.
+  - `ai_helper.improve_message(text, tone_hint, settings, instruction="")` — new
+    optional `instruction` arg (free-text nudge like "shorter"/"warmer"); appended
+    to the prompt inside the same hard safety rules (no threats/legal/new numbers).
+    Backward compatible.
+  - Approval Queue (`app.py`): a Fine-tune row (instruction `text_input` + button)
+    runs `improve_message` on the *current* editor text, shows the AI result in an
+    `st.info` with **✅ Use this version** / **↩️ Keep my version** (non-destructive;
+    apply writes via the deferred `pending_key` before the text_area re-instantiates).
+    Tone-variants button retained below it.
+  - **Un-hid AI on Free**: new helpers `_ai_pro()` / `_ai_configured()`. When Pro+AI
+    → full controls; when **not Pro** → inline markdown upsell caption (feature is
+    visible, not hidden); when Pro-but-AI-off → "turn on AI in Settings" caption.
+    (`_ai_unlocked()` kept for the reply-intent popover, still Pro+configured.)
+  - Settings → AI status: **🔌 Test AI connection** button (live `improve_message`
+    probe; success/❌ without generating a real document).
+  - Tests: 5 new in `tests/test_ai_features.py` (improve_message fail-safe +
+    instruction plumbing). **Suite 188 passing.**
+  - Still-open decision: whether to allow a *limited number* of AI refines on Free
+    instead of pure upsell (currently pure upsell).
 - A full **product/UX/AI/roadmap strategic review** was delivered in chat this
   session (usability ~6.5/10, UI ~7/10, usefulness ~7.5/10; top gaps: no real
   sending, no payment-link/reconciliation, thin analytics, AI split-brain,

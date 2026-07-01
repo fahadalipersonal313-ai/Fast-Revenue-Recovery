@@ -16,6 +16,7 @@ from src.ai_helper import (
     REPLY_INTENTS,
     TONE_VARIANTS,
     classify_reply,
+    improve_message,
     message_tone_variants,
 )
 from src.reply_actions import describe_classification, suggest_next_step
@@ -80,6 +81,56 @@ def test_classify_reply_unknown_intent_becomes_other(monkeypatch, settings):
     out = classify_reply("...", settings)
     assert out["intent"] == "other"
     assert out["promised_date"] is None
+
+
+# ---------------------------------------------------------------------------
+# Fine-tune (improve_message) — fail-safe + optional user instruction
+# ---------------------------------------------------------------------------
+def test_improve_message_none_when_ai_disabled(settings):
+    assert improve_message("Please pay invoice 5.", "polite", settings) is None
+
+
+def test_improve_message_none_for_empty_text(settings):
+    assert improve_message("   ", "polite", settings) is None
+
+
+def test_improve_message_returns_refined_text(monkeypatch, settings):
+    # Real provider backends strip; the stub returns whatever _complete gives,
+    # so improve_message is a straight pass-through of the model text.
+    _force_ai(monkeypatch, "Here is a warmer reminder.")
+    out = improve_message("Pay now.", "warm", settings)
+    assert out == "Here is a warmer reminder."
+
+
+def test_improve_message_passes_instruction_into_prompt(monkeypatch, settings):
+    captured = {}
+
+    def _fake_complete(system, prompt, settings, max_tokens):
+        captured["prompt"] = prompt
+        return "ok"
+
+    monkeypatch.setattr(ai, "ai_available", lambda settings: True)
+    monkeypatch.setattr(ai, "_complete", _fake_complete)
+
+    improve_message("Pay invoice 5.", "polite", settings,
+                    instruction="make it shorter")
+    assert "make it shorter" in captured["prompt"]
+    # The base message is still present in the prompt.
+    assert "Pay invoice 5." in captured["prompt"]
+
+
+def test_improve_message_blank_instruction_adds_nothing(monkeypatch, settings):
+    captured = {}
+
+    def _fake_complete(system, prompt, settings, max_tokens):
+        captured["prompt"] = prompt
+        return "ok"
+
+    monkeypatch.setattr(ai, "ai_available", lambda settings: True)
+    monkeypatch.setattr(ai, "_complete", _fake_complete)
+
+    improve_message("Pay invoice 5.", "polite", settings, instruction="   ")
+    assert "Extra instruction" not in captured["prompt"]
 
 
 # ---------------------------------------------------------------------------

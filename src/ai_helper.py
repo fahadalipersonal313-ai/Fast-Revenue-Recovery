@@ -202,15 +202,31 @@ def _complete(system: str, prompt: str, settings: Settings, max_tokens: int) -> 
     return _anthropic_complete(system, prompt, settings, max_tokens)
 
 
-def improve_message(text: str, tone_hint: str, settings: Settings) -> Optional[str]:
+def improve_message(
+    text: str,
+    tone_hint: str,
+    settings: Settings,
+    instruction: str = "",
+) -> Optional[str]:
     """Return a polished version of ``text`` or None to keep the original.
 
     Never invents amounts, dates or commitments — the prompt forbids it and the
     caller still owns the deterministic content.
+
+    ``instruction`` is an optional free-text nudge from the user (e.g. "make it
+    shorter", "warmer", "mention the Friday deadline"). It is obeyed *within* the
+    same hard safety rules — the model still may not add threats, legal language,
+    late fees or any new numbers/amounts/dates that were not already present.
     """
     if not ai_available(settings) or not text.strip():
         return None
     prompt = f"Tone: {tone_hint}\n\nMessage to refine:\n{text}"
+    if instruction.strip():
+        prompt += (
+            "\n\nExtra instruction from the user — follow it, but stay inside the "
+            "rules above (no threats, no legal language, no new numbers, amounts, "
+            f"dates or promises): {instruction.strip()}"
+        )
     return _complete(_REFINE_SYSTEM_PROMPT, prompt, settings, max_tokens=600)
 
 
