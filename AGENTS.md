@@ -248,8 +248,22 @@ PYTHONPATH="D:\revenue-recovery-desk\.venv\Lib\site-packages" \
   raw object text instead of a widget, check for an `st.<widget>(...) if cond
   else st.<other>(...)` expression-statement pattern.
 
+## Current state (2026-07-01)
+- **Git**: `main` + `claude/new-session-dnhaay` both at `9b62cca`.
+- **Tests**: **183 passing** (pytest -q, no failures).
+- **AI providers**: `gemini` (default, free), `glm` (Z.ai, free flash models),
+  `anthropic` (paid). Secrets: `GEMINI_API_KEY` / `GLM_API_KEY` / `ANTHROPIC_API_KEY`
+  / `AI_API_KEY`; `AI_PROVIDER`; `AI_ENABLED`; `GLM_BASE_URL` (optional, for
+  China endpoint `https://open.bigmodel.cn/api/paas/v4`).
+- **Deploy note**: after any dataclass-field rename, Streamlit Cloud's in-process
+  module cache can serve the old schema. Fix: Manage app → ⋮ → Clear cache →
+  Reboot app (not just Rerun).
+- **Invoice/Quote PDF**: plain-paper `SimpleDocTemplate`, optional logo (top_left/
+  top_center/top_right), optional signature bottom-right, mandatory `from_company`,
+  optional `from_email`/`from_address`/`from_phone`.
+
 ## Open roadmap (proposed) — recommended order
-1. ~~Metrics layer~~ — **done** (Phase 1, see above).
+1. ~~Metrics layer~~ — **done**.
 2. **Module dashboards + mega dashboard**: turn per-type pages into real module
    dashboards (KPIs + aging/status charts + filtered queue + outcomes); main
    Dashboard becomes aggregate rollup with drill-down buttons. Charts call the
@@ -258,27 +272,16 @@ PYTHONPATH="D:\revenue-recovery-desk\.venv\Lib\site-packages" \
    aliases — "new client setup" with manual header entry (no file needed),
    recognition panel (recognized vs missing vs unmapped), keeps learning.
 4. Premium polish: empty states everywhere, onboarding wizard, charts.
+5. **Test AI connection button** on Settings page (confirm GLM/Gemini/Anthropic
+   key works live without generating a real document).
 
-### Invoice Generator roadmap
-- **Phase 1 (done)**: manual form → PDF → Gmail draft.
-- **Phase 2 (done)**: per-customer invoice profiles; dropdown reload;
-  `generated_invoices` ledger with `source='manual'`.
-- **Phase 3 (done)**: bulk generate from an uploaded file in the "Bulk from
-  file" tab; per-customer profiles applied automatically; rows matching a manual
-  `(customer, invoice_number)` are skipped and the skipped count is reported.
-- **Phase 4 (done)**: richer bulk fields (company/contact/mobile/address/
-  description) via the dedicated `invoice_bulk` field set, compact 4-col mapping
-  grid, and a "Remember these column names" toggle that teaches the
-  `invoice_bulk` learned-alias pool so a client's files auto-map next time.
+### Invoice Generator (all phases done)
+- Phase 1: manual form → PDF → Gmail draft.
+- Phase 2: per-customer invoice profiles; dropdown reload; `generated_invoices` ledger.
+- Phase 3: bulk generate from file; profiles applied automatically; manual rows skipped.
+- Phase 4: richer bulk fields (company/contact/mobile/address/description);
+  compact 4-col mapping grid; "Remember column names" teaches `invoice_bulk` aliases.
 
-### Invoice Generator roadmap
-- **Phase 1 (done)**: manual form → PDF → Gmail draft.
-- **Phase 2 (pending)**: save customer + field schema as an *invoice profile*
-  on Done; dropdown loads profile to pre-fill the form. Tables:
-  `invoice_profiles` and `generated_invoices` (`source='manual'|'auto'`).
-- **Phase 3 (pending)**: bulk auto-generate from Upload Center when
-  `column_mapper` matches rows to a saved profile. Auto-gen **must skip** any
-  `(customer, invoice_number)` that already has a `source='manual'` row, and
-  report skipped count.
-- **Phase 4 (pending)**: saved profile field schema feeds `column_mapper`
-  learned aliases for that customer.
+### Quote Generator (done, mirrors Invoice Generator)
+- Manual form + bulk-from-file; `QuoteData` / `render_quote_pdf` / `src/bulk_quote.py`.
+- Generated quotes optionally enter quote-recovery pipeline via `analyze_and_queue`.
